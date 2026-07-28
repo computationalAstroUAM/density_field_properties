@@ -1,9 +1,9 @@
-name: hod_madrid_py
+name: density_field_properties
 channels:
   - conda-forge
   - defaults
 dependencies:
-  - python>=3.7
+  - python=3.14
 
   # Scientific computing stack
   - numpy>=1.7
@@ -11,7 +11,6 @@ dependencies:
   - matplotlib>=3.5
 
   # Numba for high-performance computing (CPU only)
-  - pre-commit
   - numba
 
   - make
@@ -19,6 +18,9 @@ dependencies:
 
   # Data handling and I/O
   - h5py
+  - pandas
+  - pyarrow
+  - scikit-learn
 
   #- typer
   #- loguru
@@ -28,5 +30,12 @@ dependencies:
 
   - pip
   - pip:
+    - pre-commit>=4.6.0
+    - identify>=2.6.0
     #- python-dotenv
     - mkdocs
+    - numpy>=1.7
+    - scipy>=1.7
+    - matplotlib>=3.5
+    - h5py>=3.15.1
+    - bigfile>=0.1.52

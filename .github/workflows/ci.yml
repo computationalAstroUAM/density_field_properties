@@ -1,0 +1,63 @@
+name: Density field — pre-commit and pytest (Conda)
+
+# Fork (santhiperbolico): push/PR on main and develop.
+# Upstream (computationalAstroUAM): push/PR on main; pull_request_target on main
+# runs for PRs opened from forks (e.g. santhiperbolico:main → upstream:main).
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+  pull_request_target:
+    branches:
+      - main
+  workflow_dispatch:
+
+# --- Group by branch name and cancel duplicates ---
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  precommit-and-pytest:
+    name: Pre-commit and pytest (Python 3.14)
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'pull_request' ||
+      (
+        github.event_name == 'pull_request_target' &&
+        github.event.pull_request.head.repo.full_name != github.repository
+      )
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        shell: bash -l {0}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Conda environment
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-version: latest
+          environment-file: src/environment.yml
+          activate-environment: density_field_properties
+          python-version: "3.14"
+          cache-environment: true
+
+      - name: Upgrade pre-commit (Black 25 hook manifest needs recent pre-commit)
+        run: python -m pip install --upgrade "pre-commit>=4.6.0" "identify>=2.6.0"
+
+      - name: Run pre-commit
+        run: pre-commit run --all-files --config src/.pre-commit-config.yaml
+
+      - name: Run tests
+        working-directory: src
+        env:
+          PYTHONPATH: .
+        run: pytest tests/ -m "not integration"
