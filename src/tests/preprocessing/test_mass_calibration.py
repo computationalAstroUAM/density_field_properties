@@ -13,6 +13,40 @@ from density_field_properties.preprocessing.mass_calibration_config import (
 )
 
 
+def test_abundance_match_mass_volume_changes_result():
+    """
+    Number-density normalization should differ from the rank-only case.
+    """
+    target = np.array([1.0e11, 5.0e11, 1.0e12])
+    reference = np.linspace(1.0e11, 1.0e12, 20)
+    without_volume = abundance_match_mass(target, reference)
+    volume = 200.0**3
+    with_volume = abundance_match_mass(target, reference, volume, volume)
+    assert without_volume.shape == with_volume.shape
+    assert not np.allclose(without_volume, with_volume)
+
+
+def test_apply_mass_calibration_abundance_uses_pipeline_box_size():
+    """
+    Pipeline box size should enable volume normalization when config omits it.
+    """
+    hr = pd.DataFrame({"M200b": np.logspace(11.0, 12.5, 50)})
+    lr = pd.DataFrame({"M200b": np.logspace(10.8, 12.2, 40)})
+    no_box_lr, _ = apply_mass_calibration(
+        lr.copy(),
+        hr,
+        default_mass_calibration_config(enabled=True),
+        box_size_mpc_h=0.0,
+    )
+    with_box_lr, _ = apply_mass_calibration(
+        lr.copy(),
+        hr,
+        default_mass_calibration_config(enabled=True),
+        box_size_mpc_h=200.0,
+    )
+    assert not np.allclose(no_box_lr["M200b_cal"], with_box_lr["M200b_cal"])
+
+
 def test_abundance_match_mass_preserves_order():
     """
     Abundance matching returns the same number of masses as the target sample.
@@ -50,7 +84,7 @@ def test_apply_mass_calibration_dispatch_matches_legacy_abundance_matching():
         lr.copy(),
         hr,
         default_mass_calibration_config(enabled=True),
-        box_size_mpc_h=1000.0,
+        box_size_mpc_h=0.0,
     )
     assert legacy_column == dispatched_column
     pd.testing.assert_series_equal(legacy_lr["M200b_cal"], dispatched_lr["M200b_cal"])

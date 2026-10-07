@@ -14,6 +14,9 @@ Example (repository root):
     PYTHONPATH=src python scripts/test_mass_calibration_local_sample.py \\
         --config config/haloscope_run_local_sample_mass_calibration.json \\
         --with-haloscope-features
+
+Writes HMF comparison PNGs under ``output_dir`` (UNIT vs FastPM raw vs calibrated
+per method, plus an overview figure).
 """
 
 import argparse
@@ -26,6 +29,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from density_field_properties.halo_catalog.hmf_plotting import (
+    save_halo_mass_function_comparison_plot,
+)
+from density_field_properties.halo_catalog.mass_function import (
+    HaloMassFunctionResult,
+    compute_halo_mass_function,
+    log_mass_bin_edges_from_masses,
+)
 from density_field_properties.pipelines.config import (
     load_haloscope_enrichment_config,
     resolve_fastpm_boxsize_mpc_h,
@@ -49,6 +60,12 @@ CALIBRATION_METHODS = (
     MASS_CALIBRATION_METHOD_MATCHING_ML,
 )
 SUMMARY_FILENAME = "mass_calibration_methods_summary.json"
+HMF_OVERVIEW_FIGURE = "hmf_comparison_overview.png"
+HMF_METHOD_FIGURE_TEMPLATE = "hmf_comparison_{method}.png"
+HR_MASS_COLUMN = "M200b"
+LR_RAW_MASS_COLUMN = "M200b"
+UNIT_HMF_LABEL = "UNIT_sim"
+FASTPM_RAW_HMF_LABEL = "FastPM (uncalibrated)"
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
@@ -170,6 +187,186 @@ def _run_calibration_only(
     return hr_table, lr_table, mass_column
 
 
+def _positive_finite_masses(series: pd.Series) -> np.ndarray:
+    """
+    Extract finite positive masses from a catalog column.
+
+    Parameters
+    ----------
+    series : pd.Series
+        Halo mass column.
+
+    Returns
+    -------
+    np.ndarray
+        Accepted masses in Msun/h.
+    """
+    values = series.to_numpy(dtype=float)
+    return values[np.isfinite(values) & (values > 0.0)]
+
+
+def _hmf_results_for_calibration_comparison(
+    hr_table: pd.DataFrame,
+    lr_table: pd.DataFrame,
+    mass_column: str,
+    method: str,
+    box_size_mpc_h: float,
+) -> dict[str, HaloMassFunctionResult]:
+    """
+    Build HMF curves for UNIT, raw FastPM, and calibrated FastPM.
+
+    Parameters
+    ----------
+    hr_table : pd.DataFrame
+        High-resolution (UNIT) halo table.
+    lr_table : pd.DataFrame
+        Low-resolution (FastPM) table after calibration.
+    mass_column : str
+        Calibrated mass column name on ``lr_table``.
+    method : str
+        Mass calibration method key (plot legend).
+    box_size_mpc_h : float
+        Sample volume normalization in Mpc/h.
+
+    Returns
+    -------
+    dict[str, HaloMassFunctionResult]
+        Labeled mass functions sharing common bin edges.
+    """
+    unit_masses = _positive_finite_masses(hr_table[HR_MASS_COLUMN])
+    raw_masses = _positive_finite_masses(lr_table[LR_RAW_MASS_COLUMN])
+    calibrated_masses = _positive_finite_masses(lr_table[mass_column])
+    log_mass_bin_edges = log_mass_bin_edges_from_masses(
+        [unit_masses, raw_masses, calibrated_masses]
+    )
+    return {
+        UNIT_HMF_LABEL: compute_halo_mass_function(
+            unit_masses,
+            box_size_mpc_h,
+            log_mass_bin_edges=log_mass_bin_edges,
+        ),
+        FASTPM_RAW_HMF_LABEL: compute_halo_mass_function(
+            raw_masses,
+            box_size_mpc_h,
+            log_mass_bin_edges=log_mass_bin_edges,
+        ),
+        f"FastPM ({method})": compute_halo_mass_function(
+            calibrated_masses,
+            box_size_mpc_h,
+            log_mass_bin_edges=log_mass_bin_edges,
+        ),
+    }
+
+
+def _write_method_hmf_figure(
+    hr_table: pd.DataFrame,
+    lr_table: pd.DataFrame,
+    mass_column: str,
+    method: str,
+    box_size_mpc_h: float,
+    output_dir: Path,
+) -> Path:
+    """
+    Save an HMF comparison PNG for one calibration method.
+
+    Parameters
+    ----------
+    hr_table : pd.DataFrame
+        UNIT halo table.
+    lr_table : pd.DataFrame
+        Calibrated FastPM table.
+    mass_column : str
+        Calibrated mass column.
+    method : str
+        Calibration method key.
+    box_size_mpc_h : float
+        Box side length in Mpc/h.
+    output_dir : Path
+        Directory for figures.
+
+    Returns
+    -------
+    Path
+        Written figure path.
+    """
+    figure_path = output_dir / HMF_METHOD_FIGURE_TEMPLATE.format(method=method)
+    results = _hmf_results_for_calibration_comparison(
+        hr_table,
+        lr_table,
+        mass_column,
+        method,
+        box_size_mpc_h,
+    )
+    save_halo_mass_function_comparison_plot(
+        results,
+        figure_path,
+        title=f"HMF: UNIT vs FastPM ({method})",
+    )
+    return figure_path
+
+
+def _write_hmf_overview_figure(
+    hr_table: pd.DataFrame,
+    lr_raw_masses: np.ndarray,
+    calibrated_by_method: dict[str, tuple[str, np.ndarray]],
+    box_size_mpc_h: float,
+    output_dir: Path,
+) -> Path:
+    """
+    Save one HMF plot with UNIT, raw FastPM, and all calibrated methods.
+
+    Parameters
+    ----------
+    hr_table : pd.DataFrame
+        UNIT halo table.
+    lr_raw_masses : np.ndarray
+        Uncalibrated FastPM masses.
+    calibrated_by_method : dict[str, tuple[str, np.ndarray]]
+        Maps method key to ``(mass_column, masses)`` pairs.
+    box_size_mpc_h : float
+        Box side length in Mpc/h.
+    output_dir : Path
+        Directory for figures.
+
+    Returns
+    -------
+    Path
+        Written figure path.
+    """
+    unit_masses = _positive_finite_masses(hr_table[HR_MASS_COLUMN])
+    mass_samples = [unit_masses, lr_raw_masses]
+    for _, masses in calibrated_by_method.values():
+        mass_samples.append(masses)
+    log_mass_bin_edges = log_mass_bin_edges_from_masses(mass_samples)
+
+    results: dict[str, HaloMassFunctionResult] = {
+        UNIT_HMF_LABEL: compute_halo_mass_function(
+            unit_masses,
+            box_size_mpc_h,
+            log_mass_bin_edges=log_mass_bin_edges,
+        ),
+        FASTPM_RAW_HMF_LABEL: compute_halo_mass_function(
+            lr_raw_masses,
+            box_size_mpc_h,
+            log_mass_bin_edges=log_mass_bin_edges,
+        ),
+    }
+    for method, (_, masses) in calibrated_by_method.items():
+        results[f"FastPM ({method})"] = compute_halo_mass_function(
+            masses,
+            box_size_mpc_h,
+            log_mass_bin_edges=log_mass_bin_edges,
+        )
+
+    figure_path = output_dir / HMF_OVERVIEW_FIGURE
+    save_halo_mass_function_comparison_plot(
+        results,
+        figure_path,
+        title="HMF: UNIT vs FastPM (all calibration methods)",
+    )
+    return figure_path
+
+
 def main(argv: list[str]) -> int:
     """
     Run all mass-calibration methods and write a comparison summary.
@@ -199,7 +396,13 @@ def main(argv: list[str]) -> int:
         "full feature tables" if args.with_haloscope_features else "calibration only",
     )
 
+    box_size_mpc_h = resolve_fastpm_boxsize_mpc_h(base_config)
     method_summaries = []
+    hmf_figure_paths: dict[str, str] = {}
+    calibrated_masses_by_method: dict[str, tuple[str, np.ndarray]] = {}
+    lr_raw_masses: np.ndarray | None = None
+    hr_reference: pd.DataFrame | None = None
+
     for method in CALIBRATION_METHODS:
         logging.info("Running mass calibration method: %s", method)
         if args.with_haloscope_features:
@@ -224,12 +427,43 @@ def main(argv: list[str]) -> int:
             mass_column,
             parquet_path,
         )
+        if hr_reference is None:
+            hr_reference = hr_table
+        if lr_raw_masses is None:
+            lr_raw_masses = _positive_finite_masses(lr_table[LR_RAW_MASS_COLUMN])
+        calibrated_masses_by_method[method] = (
+            mass_column,
+            _positive_finite_masses(lr_table[mass_column]),
+        )
+        figure_path = _write_method_hmf_figure(
+            hr_table,
+            lr_table,
+            mass_column,
+            method,
+            box_size_mpc_h,
+            output_dir,
+        )
+        hmf_figure_paths[method] = str(figure_path)
+        logging.info("Wrote HMF figure: %s", figure_path)
+
+    if hr_reference is not None and lr_raw_masses is not None:
+        overview_path = _write_hmf_overview_figure(
+            hr_reference,
+            lr_raw_masses,
+            calibrated_masses_by_method,
+            box_size_mpc_h,
+            output_dir,
+        )
+        hmf_figure_paths["overview"] = str(overview_path)
+        logging.info("Wrote HMF overview: %s", overview_path)
 
     payload = {
         "config": str(config_path),
         "sim_hlist": str(base_config.sim_hlist_path),
         "fastpm_list": str(base_config.fastpm_list_path),
         "calibration_only": not args.with_haloscope_features,
+        "box_size_mpc_h": box_size_mpc_h,
+        "hmf_figures": hmf_figure_paths,
         "methods": method_summaries,
     }
     summary_path = output_dir / SUMMARY_FILENAME

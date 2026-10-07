@@ -174,7 +174,6 @@ def default_mass_calibration_config(enabled: Optional[bool] = None) -> MassCalib
     enabled : Optional[bool]
         Whether LR mass calibration runs before Haloscope bin assignment. When
         ``None``, uses ``CALIBRATE_MASS`` from pipeline run defaults.
-
     Returns
     -------
     MassCalibrationConfig
@@ -318,7 +317,6 @@ def parse_mass_calibration_config(
         ``haloscope`` section of the run JSON.
     legacy_calibrate_mass : Any, optional
         Top-level ``calibrate_mass`` when present.
-
     Returns
     -------
     MassCalibrationConfig
