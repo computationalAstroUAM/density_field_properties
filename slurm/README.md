@@ -10,6 +10,7 @@ Plantillas `sbatch` para el cluster. Todas asumen `cd` al directorio del repo y 
 | `tidal_tensor/` | Tensor de marea y descriptores tidales: `main_tidal_tensor_field_fastpm.slurm`, `main_tidal_tensor_field_unit.slurm` |
 | `sim_to_fastpm/` | Haloscope SIM→FastPM: `main_sim_to_fastpm_haloscope.slurm`, `main_sim_to_fastpm_haloscope_tidal.slurm`, `main_sim_to_fastpm_haloscope_tidal_smoke.slurm` |
 | `pipelines/` | Pipeline completo: CIC + tensor de marea |
+| `rockstar/` | Post-proceso Rockstar `find_parents` (columna PID / host halos) |
 
 ## Convenciones
 
@@ -27,7 +28,14 @@ sbatch slurm/tidal_tensor/main_tidal_tensor_field_unit.slurm
 sbatch slurm/pipelines/full_pipeline.slurm
 sbatch slurm/sim_to_fastpm/main_sim_to_fastpm_haloscope_tidal_smoke.slurm
 sbatch slurm/sim_to_fastpm/main_sim_to_fastpm_haloscope_tidal.slurm
+sbatch slurm/rockstar/find_parents_fastpm_mn5_out8.slurm
 ```
+
+Salida por defecto de `find_parents_fastpm_mn5_out8.slurm`:
+
+`output/rockstar_find_parents/fastpm_mn5_tfm/out_8_with_pid.list`
+
+(El catálogo de entrada en `/data21/users/mruiz/...` es solo lectura.)
 
 Tras el fix de la issue #12, regenerar descriptores tidales:
 
