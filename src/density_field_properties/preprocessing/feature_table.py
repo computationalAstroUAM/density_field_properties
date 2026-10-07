@@ -8,7 +8,10 @@ from density_field_properties.preprocessing.context import (
     PreprocessingContext,
     SimulationRunContext,
 )
-from density_field_properties.preprocessing.filters import filter_finite_input_features
+from density_field_properties.preprocessing.filters import (
+    filter_finite_input_features,
+    filter_mass_range,
+)
 from density_field_properties.preprocessing.input_features.base import InputFeatureAttacher
 from density_field_properties.preprocessing.input_features.registry import resolve_attachers
 from density_field_properties.preprocessing.mass_calibration import apply_mass_calibration
@@ -82,6 +85,21 @@ def build_feature_tables(
     attachers = resolve_attachers(input_features)
     hr_table = _apply_attachers(halos_sim, attachers, context.sim)
     lr_table = _apply_attachers(halos_fastpm, attachers, context.fastpm)
+
+    mass_filter = context.mass_filter
+    if mass_filter.enabled:
+        hr_table = filter_mass_range(
+            hr_table,
+            min_mass_msun_h=mass_filter.min_mass_msun_h,
+            max_mass_msun_h=mass_filter.max_mass_msun_h,
+            mass_column=mass_filter.mass_column,
+        )
+        lr_table = filter_mass_range(
+            lr_table,
+            min_mass_msun_h=mass_filter.min_mass_msun_h,
+            max_mass_msun_h=mass_filter.max_mass_msun_h,
+            mass_column=mass_filter.mass_column,
+        )
 
     hr_table = filter_finite_input_features(hr_table, input_features)
     lr_table = filter_finite_input_features(lr_table, input_features)

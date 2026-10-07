@@ -1,6 +1,7 @@
 """Tests for unified Haloscope feature table builder."""
 
 import pandas as pd
+import pytest
 
 from density_field_properties.preprocessing.context import (
     PreprocessingContext,
@@ -10,6 +11,7 @@ from density_field_properties.preprocessing.feature_table import build_feature_t
 from density_field_properties.preprocessing.mass_calibration_config import (
     default_mass_calibration_config,
 )
+from density_field_properties.preprocessing.mass_filter_config import HaloMassFilterConfig
 
 
 def _sim_catalog() -> pd.DataFrame:
@@ -60,6 +62,28 @@ def test_build_feature_tables_env_only():
     assert "env" in hr.columns
     assert "env" in lr.columns
     assert mass_column == "M200b_cal"
+
+
+def test_build_feature_tables_applies_mass_filter():
+    """
+    HR and LR rows outside the configured mass range are removed.
+    """
+    context = PreprocessingContext(
+        sim=SimulationRunContext(boxsize_mpc_h=1000.0, env_radius_mpc_h=5.0),
+        fastpm=SimulationRunContext(boxsize_mpc_h=1000.0, env_radius_mpc_h=5.0),
+        mass_calibration=default_mass_calibration_config(enabled=False),
+        mass_filter=HaloMassFilterConfig(min_mass_msun_h=1.0e12, max_mass_msun_h=1.6e12),
+    )
+    hr, lr, _ = build_feature_tables(
+        _sim_catalog(),
+        _fastpm_catalog(),
+        ("env",),
+        context,
+    )
+    assert len(hr) == 1
+    assert hr["M200b"].iloc[0] == pytest.approx(1.0e12)
+    assert len(lr) == 1
+    assert lr["M200b"].iloc[0] == pytest.approx(1.5e12)
 
 
 def test_build_feature_tables_env_only_without_mass_calibration():

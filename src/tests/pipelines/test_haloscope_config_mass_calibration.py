@@ -45,6 +45,26 @@ def _minimal_config_payload(tmp_path: Path, extra: dict) -> Path:
     return config_path
 
 
+def test_sample_mass_filter_parses_from_json(tmp_path):
+    """
+    Optional ``sample`` mass bounds configure ``mass_filter``.
+    """
+    config_path = _minimal_config_payload(
+        tmp_path,
+        {
+            "sample": {
+                "min_mass_msun_h": 1.0e11,
+                "max_mass_msun_h": 5.0e12,
+            },
+        },
+    )
+    config = load_haloscope_enrichment_config(config_path)
+
+    assert config.mass_filter.enabled is True
+    assert config.mass_filter.min_mass_msun_h == pytest.approx(1.0e11)
+    assert config.mass_filter.max_mass_msun_h == pytest.approx(5.0e12)
+
+
 def test_mass_calibration_defaults_match_legacy_calibrate_mass(tmp_path):
     """
     Absent ``mass_calibration`` should enable AM like legacy ``CALIBRATE_MASS``.

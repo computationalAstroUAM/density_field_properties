@@ -36,6 +36,11 @@ from density_field_properties.preprocessing.mass_calibration_config import (
     default_mass_calibration_config,
     parse_mass_calibration_config,
 )
+from density_field_properties.preprocessing.mass_filter_config import (
+    HaloMassFilterConfig,
+    default_halo_mass_filter_config,
+    parse_halo_mass_filter_config,
+)
 
 PIPELINE_TARGET_UNIT = "unit"
 PIPELINE_TARGET_FASTPM = "fastpm"
@@ -282,6 +287,8 @@ class HaloscopeEnrichmentConfig:
         If True, return HR/LR tables in ``HaloscopeEnrichmentRun``.
     mass_calibration : MassCalibrationConfig, optional
         LR mass calibration method and hyperparameters for preprocessing.
+    mass_filter : HaloMassFilterConfig, optional
+        Optional ``M200b`` range applied to HR and LR tables during preprocessing.
     box_size_mpc_h : Optional[float], optional
         Periodic box side length in Mpc/h for both simulations. When ``None``,
         ``SIM_BOXSIZE_MPC_H`` and ``FASTPM_BOXSIZE_MPC_H`` from run defaults apply.
@@ -313,6 +320,7 @@ class HaloscopeEnrichmentConfig:
     mass_calibration: MassCalibrationConfig = field(
         default_factory=default_mass_calibration_config
     )
+    mass_filter: HaloMassFilterConfig = field(default_factory=default_halo_mass_filter_config)
 
 
 def _optional_path(value: Any) -> Optional[Path]:
@@ -726,6 +734,7 @@ def load_haloscope_enrichment_config(config_path: Path) -> HaloscopeEnrichmentCo
         haloscope,
         legacy_calibrate_mass=payload.get("calibrate_mass"),
     )
+    mass_filter = parse_halo_mass_filter_config(sample)
 
     return HaloscopeEnrichmentConfig(
         sim_hlist_path=_required_path(
@@ -755,6 +764,7 @@ def load_haloscope_enrichment_config(config_path: Path) -> HaloscopeEnrichmentCo
         run_holdout_corner_plots=bool(holdout_corner_plots.get("enabled", False)),
         collect_tables=bool(payload.get("collect_tables", False)),
         mass_calibration=mass_calibration,
+        mass_filter=mass_filter,
     )
 
 
