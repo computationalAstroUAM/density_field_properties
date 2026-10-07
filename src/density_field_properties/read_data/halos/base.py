@@ -40,6 +40,7 @@ class HaloCatalogData:
         halo_z_position: int,
         halo_m200b_position: Optional[int] = None,
         halo_rg_position: Optional[int] = None,
+        extra_columns: Optional[dict[str, np.ndarray]] = None,
     ):
         columns = [halo_id_position, halo_x_position, halo_y_position, halo_z_position]
         self.id_position = 0
@@ -58,6 +59,7 @@ class HaloCatalogData:
             self.rg_position = extra_position
             columns.append(halo_rg_position)
         self.data = data[:, columns]
+        self.extra_columns = extra_columns if extra_columns is not None else {}
 
     @property
     def n_halos(self):

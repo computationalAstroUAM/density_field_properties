@@ -7,34 +7,39 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from density_field_properties.preprocessing.filters import (
-    filter_host_training_halos,
-    filter_positive_mass,
+from density_field_properties.pipelines.catalog_columns import (
+    ROCKSTAR_LIST_CATALOG_LAYOUT,
+    rockstar_catalog_column_kwargs,
 )
+from density_field_properties.preprocessing.filters import filter_positive_mass
 from density_field_properties.read_data.halos.column_maps import (
     ROCKSTAR_LIST_COLUMNS,
-    UNIT_HLIST_COLUMNS,
+    UNIT_HLIST_TRAINING_EXTRA_COLUMN_POSITIONS,
 )
 from density_field_properties.read_data.halos.rockstar import RockstarCatalogReader
 
 
-def _read_whitespace_table_lines(
-    path: Path, max_data_rows: Optional[int] = None
+def _read_host_catalog_rows(
+    path: Path,
+    pid_index: int,
+    max_hosts: Optional[int] = None,
 ) -> list[list[str]]:
     """
-    Read non-comment whitespace-separated rows from a text or bz2 catalog file.
+    Read data rows for host halos only from a Rockstar-style catalog file.
 
     Parameters
     ----------
     path : Path
         Catalog file path.
-    max_data_rows : Optional[int], optional
-        Stop after this many data rows; ``None`` reads the full file.
+    pid_index : int
+        Zero-based parent-ID column index; ``-1`` marks a host halo.
+    max_hosts : Optional[int], optional
+        Stop after this many host rows.
 
     Returns
     -------
     list[list[str]]
-        Tokenized rows (column indices match Rockstar / consistent-trees headers).
+        Tokenized host rows in file order.
     """
     opener = bz2.open if path.suffix == ".bz2" else open
     mode = "rt" if path.suffix == ".bz2" else "r"
@@ -43,36 +48,38 @@ def _read_whitespace_table_lines(
         for line in handle:
             if line.startswith("#"):
                 continue
-            rows.append(line.split())
-            if max_data_rows is not None and len(rows) >= max_data_rows:
+            cols = line.split()
+            if int(cols[pid_index]) != -1:
+                continue
+            rows.append(cols)
+            if max_hosts is not None and len(rows) >= max_hosts:
                 break
     return rows
 
 
-def _rows_to_frame(rows: list[list[str]], column_map: dict[str, int]) -> pd.DataFrame:
+def _halo_catalog_data_to_frame(catalog) -> pd.DataFrame:
     """
-    Build a DataFrame from tokenized rows using 0-based column indices.
+    Convert ``HaloCatalogData`` positions and mass into a preprocessing table.
 
     Parameters
     ----------
-    rows : list[list[str]]
-        Data rows from a catalog file.
-    column_map : dict[str, int]
-        Mapping from output column name to 0-based index in each row.
+    catalog : HaloCatalogData
+        Rockstar catalog subset from ``read_catalog``.
 
     Returns
     -------
     pd.DataFrame
-        Selected columns cast to float where appropriate.
+        Table with ``id``, ``x``, ``y``, ``z``, and ``M200b``.
     """
-    data = {}
-    for name, index in column_map.items():
-        values = [row[index] for row in rows]
-        if name in ("id", "pid", "halo_id"):
-            data[name] = np.array(values, dtype=np.int64)
-        else:
-            data[name] = np.array(values, dtype=np.float64)
-    return pd.DataFrame(data)
+    return pd.DataFrame(
+        {
+            "id": catalog.halo_id.astype(np.int64),
+            "x": catalog.halo_x,
+            "y": catalog.halo_y,
+            "z": catalog.halo_z,
+            "M200b": catalog.halo_m200b,
+        }
+    )
 
 
 def load_unit_sim_training_catalog(
@@ -94,24 +101,25 @@ def load_unit_sim_training_catalog(
     pd.DataFrame
         Host halos with ``cv``, positions, spins, shapes, and ``M200b``.
     """
-    rows = _read_whitespace_table_lines(hlist_path, max_data_rows=max_halos)
-    frame = _rows_to_frame(rows, UNIT_HLIST_COLUMNS)
-    frame = frame.rename(columns={"id": "halo_id"})
-    frame["cv"] = frame["Rvir"] / frame["Rs_Klypin"]
-    hosts = filter_host_training_halos(frame)
-    hosts = hosts.rename(
-        columns={
-            "halo_id": "id",
-            "ba": "ba",
-            "ca": "ca",
-        }
+    catalog = RockstarCatalogReader.read_catalog(
+        str(hlist_path),
+        n_lines=max_halos,
+        filter_by_pid=True,
+        extra_column_positions=UNIT_HLIST_TRAINING_EXTRA_COLUMN_POSITIONS,
     )
-    return hosts.reset_index(drop=True)
+    frame = _halo_catalog_data_to_frame(catalog)
+    for column_name in UNIT_HLIST_TRAINING_EXTRA_COLUMN_POSITIONS:
+        frame[column_name] = catalog.extra_columns[column_name]
+    frame["cv"] = frame["Rvir"] / frame["Rs_Klypin"]
+    frame = filter_positive_mass(frame)
+    frame = frame.loc[np.isfinite(frame["cv"])].copy()
+    return frame.reset_index(drop=True)
 
 
 def rockstar_halo_catalog_to_dataframe(
     path: Path,
     n_lines: Optional[int] = None,
+    catalog_column_kwargs: Optional[dict[str, int]] = None,
 ) -> pd.DataFrame:
     """
     Load a Rockstar ``.list`` file via ``RockstarCatalogReader``.
@@ -121,35 +129,29 @@ def rockstar_halo_catalog_to_dataframe(
     path : Path
         Path to ``out_*.list``.
     n_lines : Optional[int], optional
-        Maximum halos to read.
+        Maximum host halos to read.
+    catalog_column_kwargs : Optional[dict[str, int]], optional
+        Column index kwargs for ``read_catalog``; FastPM layouts use
+        ``rockstar_catalog_column_kwargs(ROCKSTAR_LIST_CATALOG_LAYOUT)``.
 
     Returns
     -------
     pd.DataFrame
-        Columns ``x``, ``y``, ``z``, ``M200b`` (and ``id`` if present in reader).
+        Columns ``x``, ``y``, ``z``, ``M200b`` (and ``id`` when present).
     """
+    if catalog_column_kwargs is None:
+        catalog_column_kwargs = rockstar_catalog_column_kwargs(ROCKSTAR_LIST_CATALOG_LAYOUT)
     catalog = RockstarCatalogReader.read_catalog(
         str(path),
         n_lines=n_lines,
-        halo_id_position=ROCKSTAR_LIST_COLUMNS["halo_id"],
-        halo_x_position=ROCKSTAR_LIST_COLUMNS["halo_x"],
-        halo_y_position=ROCKSTAR_LIST_COLUMNS["halo_y"],
-        halo_z_position=ROCKSTAR_LIST_COLUMNS["halo_z"],
-        halo_m200b_position=ROCKSTAR_LIST_COLUMNS["halo_m200b"],
+        filter_by_pid=True,
+        **catalog_column_kwargs,
     )
-    frame = pd.DataFrame(
-        {
-            "x": catalog.halo_x,
-            "y": catalog.halo_y,
-            "z": catalog.halo_z,
-            "M200b": catalog.halo_m200b,
-        }
-    )
-    if catalog.m200b_position is not None:
-        frame["id"] = catalog.halo_id.astype(np.int64)
+    frame = _halo_catalog_data_to_frame(catalog)
     if ROCKSTAR_LIST_COLUMNS.get("t_over_u") is not None:
         t_over_u_index = ROCKSTAR_LIST_COLUMNS["t_over_u"]
-        rows = _read_whitespace_table_lines(path, max_data_rows=n_lines)
+        pid_index = catalog_column_kwargs["halo_pid_position"]
+        rows = _read_host_catalog_rows(path, pid_index=pid_index, max_hosts=n_lines)
         frame["t_over_u"] = np.array(
             [row[t_over_u_index] for row in rows],
             dtype=np.float64,
@@ -174,7 +176,12 @@ def load_fastpm_target_catalog(
     Returns
     -------
     pd.DataFrame
-        Positive-mass halos with ``x``, ``y``, ``z``, ``M200b``.
+        Positive-mass host halos with ``x``, ``y``, ``z``, ``M200b``.
     """
-    frame = rockstar_halo_catalog_to_dataframe(list_path, n_lines=max_halos)
+    column_kwargs = rockstar_catalog_column_kwargs(ROCKSTAR_LIST_CATALOG_LAYOUT)
+    frame = rockstar_halo_catalog_to_dataframe(
+        list_path,
+        n_lines=max_halos,
+        catalog_column_kwargs=column_kwargs,
+    )
     return filter_positive_mass(frame)

@@ -1,3 +1,4 @@
+import bz2
 import logging
 from typing import Generator, Optional, Tuple
 
@@ -11,6 +12,7 @@ ROCKSTAR_HALO_COLUMNS_POSITION = {
     "halo_x": 17,
     "halo_y": 18,
     "halo_z": 19,
+    "pid": 5,
     "m200b": 39,
 }
 
@@ -45,6 +47,25 @@ def _normalize_rockstar_cosmology_field(raw_key: str) -> Optional[str]:
         if token in aliases:
             return field
     return None
+
+
+def _open_rockstar_catalog_file(path: str):
+    """
+    Open a Rockstar catalog path, including ``.bz2`` compressed hlists.
+
+    Parameters
+    ----------
+    path : str
+        Catalog file path.
+
+    Returns
+    -------
+    file
+        Text-mode file object.
+    """
+    if path.endswith(".bz2"):
+        return bz2.open(path, "rt")
+    return open(path, "r")
 
 
 def _parse_rockstar_hash_line_cosmology(line: str) -> dict[str, float]:
@@ -97,8 +118,8 @@ def read_rockstar_cosmology_header(path: str) -> Optional[Cosmology]:
     """
     merged = {}
 
-    with open(path, "r") as f:
-        for line in f:
+    with _open_rockstar_catalog_file(path) as handle:
+        for line in handle:
             if not line.startswith("#"):
                 break
             merged.update(_parse_rockstar_hash_line_cosmology(line))
@@ -132,6 +153,9 @@ class RockstarCatalogReader(HaloCatalogReader):
         halo_y_position: int = ROCKSTAR_HALO_COLUMNS_POSITION["halo_y"],
         halo_z_position: int = ROCKSTAR_HALO_COLUMNS_POSITION["halo_z"],
         halo_m200b_position: int = ROCKSTAR_HALO_COLUMNS_POSITION["m200b"],
+        halo_pid_position: int = ROCKSTAR_HALO_COLUMNS_POSITION["pid"],
+        filter_by_pid: bool = True,
+        extra_column_positions: Optional[dict[str, int]] = None,
     ) -> HaloCatalogData:
         """
         Reads a Rockstar halo catalog from a file and extracts selected halo_catalog.
@@ -160,6 +184,13 @@ class RockstarCatalogReader(HaloCatalogReader):
             Position of the halo z-coordinate in the file.
         halo_m200b_position : int, optional
             Position of the halo M200b in the file.
+        halo_pid_position : int, optional
+            Position of the halo PID in the file.
+        filter_by_pid : bool, optional
+            Whether to filter halos by PID.
+        extra_column_positions : Optional[dict[str, int]], optional
+            Optional mapping of output column names to file column indices.
+            Parsed values are stored on ``HaloCatalogData.extra_columns``.
 
         Returns
         -------
@@ -174,13 +205,18 @@ class RockstarCatalogReader(HaloCatalogReader):
             - `m200b` (float): Mass (m200b) of the halo.
         """
         results = []
+        extra_lists = (
+            {name: [] for name in extra_column_positions}
+            if extra_column_positions is not None
+            else None
+        )
         cosmology = read_rockstar_cosmology_header(path)
         positions = (0, 1, 2, 3, 4)
         if isinstance(cosmology, Cosmology):
             positions = (0, 1, 2, 3, 4, 5)
 
-        with open(path, "r") as f:
-            for line in f:
+        with _open_rockstar_catalog_file(path) as handle:
+            for line in handle:
                 if line.startswith("#"):
                     continue
                 cols = line.split()
@@ -190,6 +226,9 @@ class RockstarCatalogReader(HaloCatalogReader):
                 halo_y = float(cols[halo_y_position])
                 halo_z = float(cols[halo_z_position])
                 m200b = float(cols[halo_m200b_position])
+                pid = int(cols[halo_pid_position])
+                if filter_by_pid and pid > -1: # -1 is a main halo
+                    continue
 
                 row = (halo_id, halo_x, halo_y, halo_z, m200b)
                 if isinstance(cosmology, Cosmology):
@@ -197,11 +236,19 @@ class RockstarCatalogReader(HaloCatalogReader):
                     row = (halo_id, halo_x, halo_y, halo_z, m200b, rg)
 
                 results.append(row)
+                if extra_lists is not None:
+                    for name, column_index in extra_column_positions.items():
+                        extra_lists[name].append(float(cols[column_index]))
                 if n_lines is not None and len(results) >= n_lines:
                     break
 
-        results = HaloCatalogData(np.array(results), *positions)
-        return results
+        extra_columns = None
+        if extra_lists is not None:
+            extra_columns = {
+                name: np.array(values, dtype=np.float64)
+                for name, values in extra_lists.items()
+            }
+        return HaloCatalogData(np.array(results), *positions, extra_columns=extra_columns)
 
     @staticmethod
     def read_catalog_batch_generator(
@@ -213,6 +260,8 @@ class RockstarCatalogReader(HaloCatalogReader):
         halo_y_position: int = ROCKSTAR_HALO_COLUMNS_POSITION["halo_y"],
         halo_z_position: int = ROCKSTAR_HALO_COLUMNS_POSITION["halo_z"],
         halo_m200b_position: int = ROCKSTAR_HALO_COLUMNS_POSITION["m200b"],
+        halo_pid_position: int = ROCKSTAR_HALO_COLUMNS_POSITION["pid"],
+        filter_by_pid: bool = True,
     ) -> Generator[Tuple[HaloCatalogData, int, int], None, None]:
         """
         Iterador sobre un catálogo de halos de Rockstar que devuelve batches
@@ -243,7 +292,10 @@ class RockstarCatalogReader(HaloCatalogReader):
             Position of the halo z-coordinate in the file.
         halo_m200b_position : int, optional
             Position of the halo M200b in the file.
-
+        halo_pid_position : int, optional
+            Position of the halo PID in the file.
+        filter_by_pid : bool, optional
+            Whether to filter halos by PID.
         Yields
         ------
         batch : HaloCatalogData
@@ -261,14 +313,14 @@ class RockstarCatalogReader(HaloCatalogReader):
         if isinstance(cosmology, Cosmology):
             positions = (0, 1, 2, 3, 4, 5)
 
-        with open(path, "r") as f:
-            f.seek(start_offset)
+        with _open_rockstar_catalog_file(path) as handle:
+            handle.seek(start_offset)
             results = []
             batch_start_offset: Optional[int] = None
 
             while True:
-                line_offset = f.tell()
-                line = f.readline()
+                line_offset = handle.tell()
+                line = handle.readline()
                 if not line:
                     break
                 if line.startswith("#"):
@@ -282,6 +334,9 @@ class RockstarCatalogReader(HaloCatalogReader):
                 halo_y = float(cols[halo_y_position])
                 halo_z = float(cols[halo_z_position])
                 m200b = float(cols[halo_m200b_position])
+                pid = int(cols[halo_pid_position])
+                if filter_by_pid and pid > -1: # -1 is a main halo
+                    continue
                 row = (halo_id, halo_x, halo_y, halo_z, m200b)
                 if isinstance(cosmology, Cosmology):
                     rg = 4.0 * cosmology.convert_m200b_to_r200b(m200b) / np.sqrt(5.0)
@@ -292,7 +347,7 @@ class RockstarCatalogReader(HaloCatalogReader):
                 if len(results) == batch_size:
                     batch = np.array(results, dtype=float)
                     batch = HaloCatalogData(batch, *positions)
-                    next_offset = f.tell()
+                    next_offset = handle.tell()
                     yield batch, batch_start_offset, next_offset
                     results = []
                     batch_start_offset = None
@@ -302,5 +357,5 @@ class RockstarCatalogReader(HaloCatalogReader):
                 batch = HaloCatalogData(batch, *positions)
                 if batch_start_offset is None:
                     batch_start_offset = start_offset
-                next_offset = f.tell()
+                next_offset = handle.tell()
                 yield batch, batch_start_offset, next_offset
