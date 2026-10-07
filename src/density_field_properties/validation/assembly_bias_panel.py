@@ -42,6 +42,7 @@ INPUT_FEATURE_PLOT_LABELS = {
     "env": "env",
     "t_over_u": "T/|U|",
     "tidal_anisotropy": "tidal anisotropy",
+    "overdensity": "overdensity",
 }
 
 

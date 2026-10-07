@@ -24,7 +24,7 @@ from density_field_properties.pipelines.tidal_anisotropy_run import (
     tidal_anisotropy_output_dir,
 )
 from density_field_properties.preprocessing.input_features.tidal_anisotropy import (
-    TIDAL_ANISOTROPY_FEATURE_NAME,
+    input_features_need_tidal_descriptors,
 )
 
 
@@ -102,7 +102,7 @@ def _resolve_descriptor_dirs_from_pipeline(config: HaloscopeEnrichmentConfig) ->
     config : HaloscopeEnrichmentConfig
         Run configuration updated in place when tidal features are requested.
     """
-    if TIDAL_ANISOTROPY_FEATURE_NAME not in config.input_features:
+    if not input_features_need_tidal_descriptors(config.input_features):
         return
     _apply_computed_descriptor_dirs(config)
 

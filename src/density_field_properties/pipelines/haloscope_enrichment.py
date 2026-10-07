@@ -30,7 +30,7 @@ from density_field_properties.preprocessing.catalog_loaders import (
 from density_field_properties.preprocessing.context import build_preprocessing_context
 from density_field_properties.preprocessing.feature_table import build_feature_tables
 from density_field_properties.preprocessing.input_features.tidal_anisotropy import (
-    TIDAL_ANISOTROPY_FEATURE_NAME,
+    input_features_need_tidal_descriptors,
 )
 from density_field_properties.validation.assembly_bias_panel import (
     write_tidal_assembly_bias_panel,
@@ -86,7 +86,7 @@ def _resolve_tidal_descriptor_dirs(
     tuple[Optional[Path], Optional[Path]]
         Resolved UNIT and FastPM descriptor directories.
     """
-    if TIDAL_ANISOTROPY_FEATURE_NAME not in feature_names:
+    if not input_features_need_tidal_descriptors(feature_names):
         return unit_descriptors_dir, fastpm_descriptors_dir
 
     unit_path = unit_descriptors_dir
@@ -144,6 +144,7 @@ def build_haloscope_feature_tables(
         fastpm_descriptors_dir=fastpm_descriptor_path,
         tidal_n_grid=config.tidal_n_grid,
         max_descriptor_batch_files=config.max_descriptor_batch_files,
+        mass_filter=config.mass_filter,
     )
     return build_feature_tables(
         halos_sim,
