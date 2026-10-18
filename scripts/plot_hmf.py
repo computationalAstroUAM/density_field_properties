@@ -5,6 +5,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.ticker import MultipleLocator
 
 from density_field_properties.pipelines.catalog_columns import (
     ROCKSTAR_LIST_CATALOG_LAYOUT,
@@ -15,19 +16,47 @@ from density_field_properties.read_data.halos.rockstar import RockstarCatalogRea
 DEFAULT_BOX_SIZE_MPC_H = 1000.0
 
 MIN_PARTICLES = 20
-MP_UNIT_MSUN_H = 1.24e9 # Msun/h
-MP_FASTPM_MSUN_H = 9.97e9 # Msun/h
+MP_UNIT_MSUN_H = 1.24e9
+MP_FASTPM_MSUN_H = 9.97e9
 
+BIN_EDGES_LOG10_MIN = 12.0
+BIN_EDGES_LOG10_MAX = 15.5
+BIN_EDGES_COUNT = 25
+PLOT_MIN_LOG_MASS = 12.4
+MATCHED_MIN_LOG_MASS = 12.6
 
 ROCKSTAR_HALO_COLUMNS_POSITION_FASTPM = rockstar_catalog_column_kwargs(
     ROCKSTAR_LIST_CATALOG_LAYOUT
 )
 
 
-def load_halo_masses_from_catalog(catalog_path: Path, filter_by_pid: bool = True, params: dict[str, int] | None = None) -> np.ndarray:
+def load_halo_masses_from_catalog(
+    catalog_path: Path,
+    filter_by_pid: bool = True,
+    params: dict[str, int] | None = None,
+) -> np.ndarray:
+    """
+    Load M200b halo masses from a Rockstar catalog file.
+
+    Parameters
+    ----------
+    catalog_path : Path
+        Path to the Rockstar list catalog.
+    filter_by_pid : bool, optional
+        If True, keep only main halos (pid == -1).
+    params : dict[str, int] or None, optional
+        Column layout overrides for ``RockstarCatalogReader``.
+
+    Returns
+    -------
+    np.ndarray
+        Halo masses in Msun/h.
+    """
     if params is None:
-        params = ROCKSTAR_HALO_COLUMNS_POSITION_FASTPM
-    catalog_data = RockstarCatalogReader.read_catalog(catalog_path, filter_by_pid=filter_by_pid, **params)
+        params = {}
+    catalog_data = RockstarCatalogReader.read_catalog(
+        str(catalog_path), filter_by_pid=filter_by_pid, **params
+    )
 
     logging.info("Loaded %d halos from %s", len(catalog_data.halo_m200b), catalog_path)
     logging.info("\t - Min Mass %d", min(catalog_data.halo_m200b))
@@ -73,6 +102,35 @@ def halo_mass_function_from_masses(
     return masses_sorted, n_density, argsort
 
 
+def halo_mass_function_from_masses_not_cumulative(
+    masses: np.ndarray,
+    bin_edges: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Build a non-cumulative halo mass function from a mass sample.
+
+    Parameters
+    ----------
+    masses : np.ndarray
+        Halo masses in Msun/h.
+    bin_edges : np.ndarray or None, optional
+        Bin edges to use for the mass function. If None, edges span the sample range.
+
+    Returns
+    -------
+    bin_centers : np.ndarray
+        Bin centers.
+    n_density : np.ndarray
+        Number of halos in each bin.
+    """
+    if bin_edges is None:
+        bin_edges = np.logspace(np.log10(masses.min()), np.log10(masses.max()), 100)
+
+    bin_centers = 0.5 * (bin_edges[1:] + bin_edges[:-1])
+    n_density, _ = np.histogram(masses, bins=bin_edges)
+    return bin_centers, n_density
+
+
 def abundance_matching_calibration(
     masses_reference_sorted: np.ndarray,
     n_density_reference: np.ndarray,
@@ -106,9 +164,190 @@ def abundance_matching_calibration(
     return np.power(10.0, log_mass_new)
 
 
+def load_hmf_curves_from_csv(
+    csv_path: Path,
+) -> tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+]:
+    """
+    Load binned HMF curves written by this script's CSV export.
+
+    Parameters
+    ----------
+    csv_path : Path
+        Path to the comma-separated export (six data rows after the header).
+
+    Returns
+    -------
+    bin_centers_unit : np.ndarray
+        UNIT bin centers in Msun/h.
+    n_density_unit : np.ndarray
+        UNIT counts per bin.
+    bin_centers_fastpm : np.ndarray
+        FastPM bin centers in Msun/h.
+    n_density_fastpm : np.ndarray
+        FastPM counts per bin.
+    bin_centers_fastpm_new : np.ndarray
+        Abundance-matched FastPM bin centers in Msun/h.
+    n_density_fastpm_new : np.ndarray
+        Abundance-matched FastPM counts per bin.
+    """
+    raw = np.loadtxt(csv_path, delimiter=",", skiprows=1)
+    return raw[0], raw[1], raw[2], raw[3], raw[4], raw[5]
+
+
+def plot_binned_hmf_log_axes(
+    bin_centers_unit: np.ndarray,
+    n_density_unit: np.ndarray,
+    bin_centers_fastpm: np.ndarray,
+    n_density_fastpm: np.ndarray,
+    bin_centers_fastpm_new: np.ndarray,
+    n_density_fastpm_new: np.ndarray,
+    min_particles: int,
+    output_path: Path,
+) -> None:
+    """
+    Plot UNIT vs FastPM binned HMFs with log10 axes and minor tick marks.
+
+    Parameters
+    ----------
+    bin_centers_unit : np.ndarray
+        UNIT bin centers in Msun/h.
+    n_density_unit : np.ndarray
+        UNIT counts per bin.
+    bin_centers_fastpm : np.ndarray
+        FastPM bin centers in Msun/h.
+    n_density_fastpm : np.ndarray
+        FastPM counts per bin.
+    bin_centers_fastpm_new : np.ndarray
+        FastPM abundance-matched bin centers in Msun/h.
+    n_density_fastpm_new : np.ndarray
+        FastPM abundance-matched counts per bin.
+    min_particles : int
+        Minimum particle count used for the sample (plot title).
+    output_path : Path
+        Destination image path.
+    fastpm_label : str, optional
+        Legend label for the FastPM curve.
+    """
+    log_mass_unit = np.log10(bin_centers_unit)
+    unit_mask = (log_mass_unit >= PLOT_MIN_LOG_MASS) & (n_density_unit > 0)
+
+    log_mass_fastpm = np.log10(bin_centers_fastpm)
+    fastpm_mask = (log_mass_fastpm >= PLOT_MIN_LOG_MASS) & (n_density_fastpm > 0)
+    log_mass_fastpm_new = np.log10(bin_centers_fastpm_new)
+    matched_mask = (log_mass_fastpm_new > MATCHED_MIN_LOG_MASS) & (n_density_fastpm_new > 0)
+
+    fig, ax = plt.subplots(figsize=(10, 10))
+    ax.plot(
+        log_mass_fastpm_new[matched_mask],
+        np.log10(n_density_fastpm_new[matched_mask]),
+        "-",
+        label="FastPM (abundance-matched to UNIT)",
+        linewidth=1.2,
+    )
+    ax.plot(
+        log_mass_unit[unit_mask],
+        np.log10(n_density_unit[unit_mask]),
+        "--",
+        label="UNIT",
+        linewidth=1.2,
+    )
+    ax.plot(
+        log_mass_fastpm[fastpm_mask],
+        np.log10(n_density_fastpm[fastpm_mask]),
+        "-",
+        label="FastPM",
+        linewidth=1.2,
+    )
+    ax.set_title(f"Halo mass function ($N_\\mathrm{{part}} \\geq {min_particles}$)")
+    ax.set_xlabel(r"$\log_{10}(M_{200\mathrm{b}}\,[\mathrm{M}_\odot/h])$")
+    ax.set_ylabel(r"$\log_{10}(n(M))$")
+    ax.xaxis.set_major_locator(MultipleLocator(0.2))
+    ax.xaxis.set_minor_locator(MultipleLocator(0.1))
+    ax.yaxis.set_major_locator(MultipleLocator(0.5))
+    ax.yaxis.set_minor_locator(MultipleLocator(0.1))
+    ax.set_xlim(left=PLOT_MIN_LOG_MASS)
+    ax.grid(which="major", linestyle="-", alpha=0.35)
+    ax.grid(which="minor", linestyle=":", alpha=0.25)
+    ax.legend()
+    fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _apply_min_particle_cut(
+    masses_unit: np.ndarray,
+    masses_fastpm: np.ndarray,
+    min_particles: int | None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Filter halo masses by a minimum particle count threshold.
+
+    Parameters
+    ----------
+    masses_unit : np.ndarray
+        UNIT halo masses in Msun/h.
+    masses_fastpm : np.ndarray
+        FastPM halo masses in Msun/h.
+    min_particles : int or None
+        Minimum particles per halo; no filtering when None.
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray]
+        Filtered UNIT and FastPM mass arrays.
+    """
+    if min_particles is None:
+        return masses_unit, masses_fastpm
+    masses_unit = masses_unit[masses_unit > min_particles * MP_UNIT_MSUN_H]
+    masses_fastpm = masses_fastpm[masses_fastpm > min_particles * MP_FASTPM_MSUN_H]
+    return masses_unit, masses_fastpm
+
+
+def _abundance_match_fastpm_to_unit(
+    masses_unit: np.ndarray,
+    masses_fastpm: np.ndarray,
+    volume: float,
+) -> np.ndarray:
+    """
+    Calibrate FastPM masses to the UNIT cumulative mass function.
+
+    Parameters
+    ----------
+    masses_unit : np.ndarray
+        UNIT halo masses in Msun/h.
+    masses_fastpm : np.ndarray
+        FastPM halo masses in Msun/h.
+    volume : float
+        Simulation volume in (Mpc/h)^3.
+
+    Returns
+    -------
+    np.ndarray
+        FastPM masses in original halo order, abundance-matched to UNIT.
+    """
+    masses_unit_sorted, n_density_unit, _ = halo_mass_function_from_masses(masses_unit, volume)
+    masses_fastpm_sorted, n_density_fastpm, masses_fastpm_argsort = halo_mass_function_from_masses(
+        masses_fastpm, volume, return_argsort=True
+    )
+    new_masses_sorted = abundance_matching_calibration(
+        masses_unit_sorted,
+        n_density_unit,
+        n_density_fastpm,
+    )
+    new_masses = np.empty_like(masses_fastpm)
+    new_masses[masses_fastpm_argsort] = new_masses_sorted
+    return new_masses
+
+
 def main(argv: list[str]) -> int:
     """
-    Plot UNIT and FastPM halo mass functions with density-interpolated matching.
+    Plot UNIT vs abundance-matched FastPM binned halo mass functions.
 
     Parameters
     ----------
@@ -121,104 +360,117 @@ def main(argv: list[str]) -> int:
         Process exit code.
     """
     args = _parse_args(argv)
-    volume = args.box_size_mpc_h**3
 
+    if args.hmf_csv is not None:
+        args.output_dir.mkdir(parents=True, exist_ok=True)
+        (
+            centers_unit,
+            n_unit,
+            centers_fastpm,
+            n_fastpm,
+            centers_fastpm_new,
+            n_fastpm_new,
+        ) = load_hmf_curves_from_csv(args.hmf_csv)
+        plot_path = (
+            args.output_dir
+            / f"halo_mass_function_not_cumulative_np_particles_{args.min_particles: .0f}.png"
+        )
+        plot_binned_hmf_log_axes(
+            centers_unit,
+            n_unit,
+            centers_fastpm,
+            n_fastpm,
+            centers_fastpm_new,
+            n_fastpm_new,
+            args.min_particles,
+            plot_path,
+        )
+        logging.info("Saved plot to %s", plot_path)
+        return 0
+
+    if args.halo_catalog_unit is None or args.halo_catalog_fastpm is None:
+        raise SystemExit(
+            "Provide --halo-catalog-unit and --halo-catalog-fastpm, or use --hmf-csv."
+        )
+
+    volume = args.box_size_mpc_h**3
     filter_by_pid = not args.all_halos
 
     logging.info("Loading halo masses catalogs")
-    masses_fastpm = load_halo_masses_from_catalog(args.halo_catalog_fastpm, filter_by_pid=filter_by_pid, params=ROCKSTAR_HALO_COLUMNS_POSITION_FASTPM)
-    masses_unit = load_halo_masses_from_catalog(args.halo_catalog_unit, filter_by_pid=filter_by_pid)
-    
-
-    if args.min_particles is not None:
-        masses_unit = masses_unit[masses_unit > args.min_particles * MP_UNIT_MSUN_H]
-        masses_fastpm = masses_fastpm[masses_fastpm > args.min_particles * MP_FASTPM_MSUN_H]
-
-    logging.info("Calculating halo mass functions")
-    masses_unit_sorted, n_density_unit, _ = halo_mass_function_from_masses(
-        masses_unit, volume
+    masses_fastpm = load_halo_masses_from_catalog(
+        args.halo_catalog_fastpm,
+        filter_by_pid=filter_by_pid,
+        params=ROCKSTAR_HALO_COLUMNS_POSITION_FASTPM,
     )
-    masses_fastpm_sorted, n_density_fastpm, masses_fastpm_argsort = (
-        halo_mass_function_from_masses(masses_fastpm, volume, return_argsort=True)
+    masses_unit = load_halo_masses_from_catalog(
+        args.halo_catalog_unit, filter_by_pid=filter_by_pid
     )
 
-    logging.info("Abundance matching calibration")
-    new_masses_sorted = abundance_matching_calibration(
-        masses_unit_sorted,
-        n_density_unit,
-        n_density_fastpm,
+    masses_unit, masses_fastpm = _apply_min_particle_cut(
+        masses_unit, masses_fastpm, args.min_particles
     )
-    new_masses = np.empty_like(masses_fastpm)
-    new_masses[masses_fastpm_argsort] = new_masses_sorted
 
-    logging.info("Plotting halo mass function")
-    args.output_dir.mkdir(parents=True, exist_ok=True)
-
-    plt.figure(figsize=(10, 10))
-    plt.title(
-        f"Cumulative halo mass function ($N_\\mathrm{{part}} \\geq {args.min_particles}$)"
-    )
-    plt.plot(
-        np.log10(masses_unit_sorted),
-        np.log10(n_density_unit),
-        label="UNIT",
-    )
-    plt.plot(
-        np.log10(masses_fastpm_sorted),
-        np.log10(n_density_fastpm),
-        label="FastPM",
-    )
-    plt.plot(
-        np.log10(new_masses_sorted),
-        np.log10(n_density_fastpm),
-        label="FastPM (abundance-matched to UNIT)",
-    )
-    plt.xlabel(r"$\log_{10}(M_{200\mathrm{b}}\,[\mathrm{M}_\odot/h])$")
-    plt.ylabel(r"$\log_{10}(n(>M)\,[\mathrm{h}^{3}\,\mathrm{Mpc}^{-3}])$")
-    plt.legend()
-    plt.savefig(
-        args.output_dir / f"halo_mass_function_np_particles_{args.min_particles: .0f}.png",
-        dpi=150,
-        bbox_inches="tight",
-    )
-    plt.close()
-
-
-    logging.info("Saving HMF curve data to CSV")
-    n_unit = len(masses_unit_sorted)
-    n_fastpm = len(masses_fastpm_sorted)
-    n_points = 10000
-    hmf_columns = [
-        np.log10(masses_unit_sorted)[np.linspace(0, n_unit - 1, n_points)],
-        np.log10(n_density_unit)[np.linspace(0, n_unit - 1, n_points)],
-        np.log10(masses_fastpm_sorted)[np.linspace(0, n_fastpm - 1, n_points)],
-        np.log10(n_density_fastpm)[np.linspace(0, n_fastpm - 1, n_points)],
-        np.log10(new_masses_sorted)[np.linspace(0, n_fastpm - 1, n_points)],
-        np.log10(n_density_fastpm)[np.linspace(0, n_fastpm - 1, n_points)],
-    ]
-    hmf_padded = np.full((n_points, len(hmf_columns)), np.nan, dtype=np.float64)
-    for col_idx, column in enumerate(hmf_columns):
-        hmf_padded[: len(column), col_idx] = column
-    hmf_data_path = args.output_dir / f"halo_mass_function_np_particles_{args.min_particles: .0f}.csv"
-    np.savetxt(
-        hmf_data_path,
-        hmf_padded,
-        delimiter=",",
-        header=(
-            "Min Particles: " + str(args.min_particles) + "\n"
-            "log10_M200b_UNIT,log10_n_density_UNIT,"
-            "log10_M200b_FastPM,log10_n_density_FastPM,"
-            "log10_M200b_FastPM_corrected,log10_n_density_FastPM_corrected"
-        ),
-        comments="",
-    )
-    logging.info("Saved HMF curve data to %s", hmf_data_path)
-
+    logging.info("Calculating cumulative halo mass functions for abundance matching")
+    new_masses = _abundance_match_fastpm_to_unit(masses_unit, masses_fastpm, volume)
     logging.info(
         "Per-halo calibrated masses: min=%.3e max=%.3e",
         new_masses.min(),
         new_masses.max(),
     )
+
+    bin_edges = np.logspace(BIN_EDGES_LOG10_MIN, BIN_EDGES_LOG10_MAX, BIN_EDGES_COUNT)
+
+    logging.info("Calculating binned halo mass functions")
+    bins_centers_unit, n_density_unit = halo_mass_function_from_masses_not_cumulative(
+        masses_unit, bin_edges=bin_edges
+    )
+    bins_centers_fastpm, n_density_fastpm = halo_mass_function_from_masses_not_cumulative(
+        masses_fastpm, bin_edges=bin_edges
+    )
+    bins_centers_fastpm_new, n_density_fastpm_new = halo_mass_function_from_masses_not_cumulative(
+        new_masses, bin_edges=bin_edges
+    )
+
+    logging.info("Plotting halo mass function")
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+
+    plot_path = (
+        args.output_dir
+        / f"halo_mass_function_not_cumulative_np_particles_{args.min_particles: .0f}.png"
+    )
+    plot_binned_hmf_log_axes(
+        bins_centers_unit,
+        n_density_unit,
+        bins_centers_fastpm,
+        n_density_fastpm,
+        bins_centers_fastpm_new,
+        n_density_fastpm_new,
+        args.min_particles,
+        plot_path,
+    )
+    logging.info("Saved plot to %s", plot_path)
+
+    logging.info("Saving HMF curve data to CSV")
+    hmf_columns = [
+        bins_centers_unit,
+        n_density_unit,
+        bins_centers_fastpm,
+        n_density_fastpm,
+        bins_centers_fastpm_new,
+        n_density_fastpm_new,
+    ]
+    hmf_data_path = (
+        args.output_dir
+        / f"halo_mass_function_not_cumulative_np_particles_{args.min_particles: .0f}.csv"
+    )
+    np.savetxt(
+        hmf_data_path,
+        hmf_columns,
+        delimiter=",",
+        header="Min Particles: " + str(args.min_particles),
+    )
+    logging.info("Saved HMF curve data to %s", hmf_data_path)
+
     return 0
 
 
@@ -237,19 +489,37 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         Parsed options.
     """
     parser = argparse.ArgumentParser(
-        description="Plot UNIT vs FastPM HMFs with cumulative-density mass matching."
+        description=(
+            "Plot UNIT vs FastPM binned HMFs after cumulative-density "
+            "abundance matching of FastPM masses to UNIT."
+        )
     )
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--halo-catalog-unit", type=Path, required=True)
-    parser.add_argument("--halo-catalog-fastpm", type=Path, required=True)
-    parser.add_argument("--min-particles", type=int, default=MIN_PARTICLES, help="Minimum number of particles per halo (default: 20).")
+    parser.add_argument(
+        "--hmf-csv",
+        type=Path,
+        default=None,
+        help="Replot from an existing CSV export (skips catalog loading).",
+    )
+    parser.add_argument("--halo-catalog-unit", type=Path, required=False)
+    parser.add_argument("--halo-catalog-fastpm", type=Path, required=False)
+    parser.add_argument(
+        "--min-particles",
+        type=int,
+        default=MIN_PARTICLES,
+        help="Minimum number of particles per halo (default: 20).",
+    )
     parser.add_argument(
         "--box-size-mpc-h",
         type=float,
         default=DEFAULT_BOX_SIZE_MPC_H,
         help="Simulation box size in Mpc/h (default: 1000).",
     )
-    parser.add_argument("--all-halos", action="store_true", help="Use all halos, not only main halos.")
+    parser.add_argument(
+        "--all-halos",
+        action="store_true",
+        help="Use all halos, not only main halos.",
+    )
     return parser.parse_args(argv)
 
 
@@ -257,8 +527,6 @@ if __name__ == "__main__":
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(
-        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    )
+    handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
     root.addHandler(handler)
     sys.exit(main(sys.argv[1:]))

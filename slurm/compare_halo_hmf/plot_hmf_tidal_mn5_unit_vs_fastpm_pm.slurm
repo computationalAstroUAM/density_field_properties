@@ -26,7 +26,7 @@ mkdir -p "${OUTPUT_DIR}"
 
 echo "[INFO] [$(date '+%Y-%m-%d %H:%M:%S')] plot_hmf: UNIT hlist vs FastPM Rockstar PM (tidal_anisotropy_mn5 paths)"
 
-srun python scripts/plot_hmf_not_cumulative.py \
+srun python scripts/plot_hmf.py \
     --output-dir "${OUTPUT_DIR}" \
     --halo-catalog-unit "${UNIT_HLIST}" \
     --halo-catalog-fastpm "${FASTPM_ROCKSTAR_PM}" \
