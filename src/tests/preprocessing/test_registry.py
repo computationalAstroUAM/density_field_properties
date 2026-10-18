@@ -9,6 +9,21 @@ from density_field_properties.preprocessing.input_features.registry import resol
 from density_field_properties.preprocessing.input_features.rockstar_t_over_u import (
     RockstarTOverUFeature,
 )
+from density_field_properties.preprocessing.input_features.tidal_anisotropy import (
+    HaloEnvironmentDescriptorsAttacher,
+)
+
+
+def test_resolve_attachers_groups_halo_environment_descriptors():
+    """
+    Tidal descriptor columns share one attacher when both are requested.
+    """
+    attachers = resolve_attachers(("t_over_u", "tidal_anisotropy", "overdensity"))
+    assert [type(item) for item in attachers] == [
+        RockstarTOverUFeature,
+        HaloEnvironmentDescriptorsAttacher,
+    ]
+    assert attachers[1].feature_names == ("tidal_anisotropy", "overdensity")
 
 
 def test_resolve_attachers_returns_instances_in_order():

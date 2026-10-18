@@ -31,6 +31,7 @@ def test_rockstar_list_catalog_column_layout():
     assert columns["halo_id_position"] == ROCKSTAR_LIST_COLUMNS["halo_id"]
     assert columns["halo_x_position"] == ROCKSTAR_LIST_COLUMNS["halo_x"]
     assert columns["halo_m200b_position"] == ROCKSTAR_LIST_COLUMNS["halo_m200b"]
+    assert columns["halo_pid_position"] == ROCKSTAR_LIST_COLUMNS["halo_pid"]
 
 
 def test_unknown_catalog_layout_raises():

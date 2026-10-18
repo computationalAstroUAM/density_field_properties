@@ -1,6 +1,6 @@
 """Scientific sample filters for Haloscope HR/LR tables."""
 
-from typing import Sequence
+from typing import Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -66,8 +66,59 @@ def filter_min_m200b(
     pd.DataFrame
         Filtered table with a reset index.
     """
-    filtered = frame.loc[frame[mass_column] >= min_mass_msun_h].copy()
-    return filtered.reset_index(drop=True)
+    return filter_mass_range(
+        frame,
+        min_mass_msun_h=min_mass_msun_h,
+        mass_column=mass_column,
+    )
+
+
+def filter_mass_range(
+    frame: pd.DataFrame,
+    min_mass_msun_h: Optional[float] = None,
+    max_mass_msun_h: Optional[float] = None,
+    mass_column: str = "M200b",
+) -> pd.DataFrame:
+    """
+    Keep halos within optional minimum and maximum mass bounds.
+
+    Parameters
+    ----------
+    frame : pd.DataFrame
+        Halo catalog table.
+    min_mass_msun_h : Optional[float]
+        Minimum halo mass in Msun/h; ``None`` keeps all masses at the low end.
+    max_mass_msun_h : Optional[float]
+        Maximum halo mass in Msun/h; ``None`` keeps all masses at the high end.
+    mass_column : str, optional
+        Mass column name.
+
+    Returns
+    -------
+    pd.DataFrame
+        Filtered table with a reset index.
+
+    Raises
+    ------
+    ValueError
+        If ``min_mass_msun_h`` exceeds ``max_mass_msun_h`` when both are set.
+    """
+    if min_mass_msun_h is None and max_mass_msun_h is None:
+        return frame.reset_index(drop=True)
+    if (
+        min_mass_msun_h is not None
+        and max_mass_msun_h is not None
+        and min_mass_msun_h > max_mass_msun_h
+    ):
+        raise ValueError("min_mass_msun_h must be <= max_mass_msun_h when both are set.")
+
+    mask = np.ones(len(frame), dtype=bool)
+    masses = frame[mass_column].to_numpy()
+    if min_mass_msun_h is not None:
+        mask &= masses >= min_mass_msun_h
+    if max_mass_msun_h is not None:
+        mask &= masses <= max_mass_msun_h
+    return frame.loc[mask].reset_index(drop=True)
 
 
 def filter_finite_input_features(

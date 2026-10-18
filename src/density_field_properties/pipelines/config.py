@@ -31,6 +31,21 @@ from density_field_properties.pipelines.run_defaults import (
 from density_field_properties.pipelines.tidal_anisotropy_run import (
     DEFAULT_DESCRIPTOR_BATCH_SIZE,
 )
+from density_field_properties.preprocessing.mass_calibration_config import (
+    MassCalibrationConfig,
+    default_mass_calibration_config,
+    parse_mass_calibration_config,
+)
+from density_field_properties.haloscope.mass_bin_config import (
+    HaloscopeMassBinConfig,
+    default_haloscope_mass_bin_config,
+    parse_haloscope_mass_bin_config,
+)
+from density_field_properties.preprocessing.mass_filter_config import (
+    HaloMassFilterConfig,
+    default_halo_mass_filter_config,
+    parse_halo_mass_filter_config,
+)
 
 PIPELINE_TARGET_UNIT = "unit"
 PIPELINE_TARGET_FASTPM = "fastpm"
@@ -275,6 +290,12 @@ class HaloscopeEnrichmentConfig:
         If True, write per-bin SIM hold-out corner plots during enrichment.
     collect_tables : bool, optional
         If True, return HR/LR tables in ``HaloscopeEnrichmentRun``.
+    mass_calibration : MassCalibrationConfig, optional
+        LR mass calibration method and hyperparameters for preprocessing.
+    mass_filter : HaloMassFilterConfig, optional
+        Optional ``M200b`` range applied to HR and LR tables during preprocessing.
+    mass_bin : HaloscopeMassBinConfig, optional
+        Optional log-mass bin edges for Haloscope fit and FastPM enrichment.
     box_size_mpc_h : Optional[float], optional
         Periodic box side length in Mpc/h for both simulations. When ``None``,
         ``SIM_BOXSIZE_MPC_H`` and ``FASTPM_BOXSIZE_MPC_H`` from run defaults apply.
@@ -303,6 +324,11 @@ class HaloscopeEnrichmentConfig:
     assembly_bias_n_grid: int = DEFAULT_ASSEMBLY_BIAS_N_GRID
     run_holdout_corner_plots: bool = False
     collect_tables: bool = False
+    mass_calibration: MassCalibrationConfig = field(
+        default_factory=default_mass_calibration_config
+    )
+    mass_filter: HaloMassFilterConfig = field(default_factory=default_halo_mass_filter_config)
+    mass_bin: HaloscopeMassBinConfig = field(default_factory=default_haloscope_mass_bin_config)
 
 
 def _optional_path(value: Any) -> Optional[Path]:
@@ -711,6 +737,13 @@ def load_haloscope_enrichment_config(config_path: Path) -> HaloscopeEnrichmentCo
     holdout_corner_plots = validation.get("holdout_corner_plots", {})
     output_dir = _required_path(paths.get("output_dir"), OUTPUT_DIR)
     pipeline_stages = _parse_pipeline_stages(payload, output_dir)
+    mass_calibration = parse_mass_calibration_config(
+        payload,
+        haloscope,
+        legacy_calibrate_mass=payload.get("calibrate_mass"),
+    )
+    mass_filter = parse_halo_mass_filter_config(sample)
+    mass_bin = parse_haloscope_mass_bin_config(haloscope)
 
     return HaloscopeEnrichmentConfig(
         sim_hlist_path=_required_path(
@@ -739,6 +772,9 @@ def load_haloscope_enrichment_config(config_path: Path) -> HaloscopeEnrichmentCo
         assembly_bias_n_grid=int(assembly_bias.get("n_grid", DEFAULT_ASSEMBLY_BIAS_N_GRID)),
         run_holdout_corner_plots=bool(holdout_corner_plots.get("enabled", False)),
         collect_tables=bool(payload.get("collect_tables", False)),
+        mass_calibration=mass_calibration,
+        mass_filter=mass_filter,
+        mass_bin=mass_bin,
     )
 
 

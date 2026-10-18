@@ -8,10 +8,13 @@ from density_field_properties.preprocessing.context import (
     PreprocessingContext,
     SimulationRunContext,
 )
-from density_field_properties.preprocessing.filters import filter_finite_input_features
+from density_field_properties.preprocessing.filters import (
+    filter_finite_input_features,
+    filter_mass_range,
+)
 from density_field_properties.preprocessing.input_features.base import InputFeatureAttacher
 from density_field_properties.preprocessing.input_features.registry import resolve_attachers
-from density_field_properties.preprocessing.mass_calibration import calibrate_lr_mass
+from density_field_properties.preprocessing.mass_calibration import apply_mass_calibration
 from density_field_properties.preprocessing.schemas import (
     validate_hr_training_table,
     validate_lr_target_table,
@@ -83,6 +86,21 @@ def build_feature_tables(
     hr_table = _apply_attachers(halos_sim, attachers, context.sim)
     lr_table = _apply_attachers(halos_fastpm, attachers, context.fastpm)
 
+    mass_filter = context.mass_filter
+    if mass_filter.enabled:
+        hr_table = filter_mass_range(
+            hr_table,
+            min_mass_msun_h=mass_filter.min_mass_msun_h,
+            max_mass_msun_h=mass_filter.max_mass_msun_h,
+            mass_column=mass_filter.mass_column,
+        )
+        lr_table = filter_mass_range(
+            lr_table,
+            min_mass_msun_h=mass_filter.min_mass_msun_h,
+            max_mass_msun_h=mass_filter.max_mass_msun_h,
+            mass_column=mass_filter.mass_column,
+        )
+
     hr_table = filter_finite_input_features(hr_table, input_features)
     lr_table = filter_finite_input_features(lr_table, input_features)
     if len(hr_table) == 0 or len(lr_table) == 0:
@@ -91,15 +109,17 @@ def build_feature_tables(
             "check catalogs, descriptor directories, and batch limits."
         )
 
-    lr_table, mass_column = calibrate_lr_mass(
+    lr_table, mass_column = apply_mass_calibration(
         lr_table,
         hr_table,
-        context.calibrate_mass,
+        context.mass_calibration,
+        box_size_mpc_h=context.fastpm.boxsize_mpc_h,
     )
     validate_hr_training_table(hr_table, input_features)
     validate_lr_target_table(
         lr_table,
         input_features,
-        calibrate_mass=context.calibrate_mass,
+        calibrate_mass=context.mass_calibration.enabled,
+        calibrated_mass_column=context.mass_calibration.calibrated_column,
     )
     return hr_table, lr_table, mass_column

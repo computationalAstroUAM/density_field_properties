@@ -7,6 +7,7 @@ import pytest
 from density_field_properties.preprocessing.filters import (
     filter_finite_input_features,
     filter_host_training_halos,
+    filter_mass_range,
     filter_min_m200b,
     filter_positive_mass,
 )
@@ -42,6 +43,23 @@ def test_filter_positive_mass(masses, expected_count):
     frame = pd.DataFrame({"M200b": masses})
     filtered = filter_positive_mass(frame)
     assert len(filtered) == expected_count
+
+
+@pytest.mark.parametrize(
+    "min_mass,max_mass,expected_masses",
+    [
+        (2.0e10, None, [2.0e10, 3.0e10]),
+        (None, 2.5e10, [1.0e10, 2.0e10, 2.5e10]),
+        (2.0e10, 2.5e10, [2.0e10, 2.5e10]),
+    ],
+)
+def test_filter_mass_range(min_mass, max_mass, expected_masses):
+    """
+    Optional lower and upper mass bounds are applied independently.
+    """
+    frame = pd.DataFrame({"M200b": [1.0e10, 2.0e10, 2.5e10, 3.0e10]})
+    filtered = filter_mass_range(frame, min_mass_msun_h=min_mass, max_mass_msun_h=max_mass)
+    assert filtered["M200b"].tolist() == expected_masses
 
 
 def test_filter_min_m200b_applies_threshold():

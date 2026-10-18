@@ -1,8 +1,14 @@
 """Runtime context for Haloscope preprocessing."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+
+from density_field_properties.preprocessing.mass_calibration_config import MassCalibrationConfig
+from density_field_properties.preprocessing.mass_filter_config import (
+    HaloMassFilterConfig,
+    default_halo_mass_filter_config,
+)
 
 
 @dataclass
@@ -42,18 +48,33 @@ class PreprocessingContext:
         Context for the high-resolution training simulation.
     fastpm : SimulationRunContext
         Context for the low-resolution target simulation.
-    calibrate_mass : bool
-        Whether to abundance-match LR masses to HR.
+    mass_calibration : MassCalibrationConfig
+        LR mass calibration method and parameters.
+    mass_filter : HaloMassFilterConfig
+        Optional HR/LR ``M200b`` range filter applied after feature attachment.
     """
 
     sim: SimulationRunContext
     fastpm: SimulationRunContext
-    calibrate_mass: bool
+    mass_calibration: MassCalibrationConfig
+    mass_filter: HaloMassFilterConfig = field(default_factory=default_halo_mass_filter_config)
+
+    @property
+    def calibrate_mass(self) -> bool:
+        """
+        Whether LR mass calibration is enabled (legacy alias).
+
+        Returns
+        -------
+        bool
+            ``mass_calibration.enabled``.
+        """
+        return self.mass_calibration.enabled
 
 
 def build_preprocessing_context(
     repo_root: Path,
-    calibrate_mass: bool,
+    mass_calibration: MassCalibrationConfig,
     sim_boxsize_mpc_h: float,
     fastpm_boxsize_mpc_h: float,
     env_radius_mpc_h: float,
@@ -61,6 +82,7 @@ def build_preprocessing_context(
     fastpm_descriptors_dir: Optional[Path] = None,
     tidal_n_grid: int = 512,
     max_descriptor_batch_files: Optional[int] = None,
+    mass_filter: Optional[HaloMassFilterConfig] = None,
 ) -> PreprocessingContext:
     """
     Build HR/LR preprocessing contexts with optional tidal descriptor paths.
@@ -69,8 +91,8 @@ def build_preprocessing_context(
     ----------
     repo_root : Path
         Repository root used to resolve relative descriptor directories.
-    calibrate_mass : bool
-        Whether to abundance-match LR masses to HR.
+    mass_calibration : MassCalibrationConfig
+        LR mass calibration settings for Haloscope preprocessing.
     sim_boxsize_mpc_h : float
         SIM periodic box side in Mpc/h.
     fastpm_boxsize_mpc_h : float
@@ -85,6 +107,8 @@ def build_preprocessing_context(
         Grid resolution used for tidal descriptors.
     max_descriptor_batch_files : Optional[int]
         Smoke cap on tidal descriptor batch files per simulation.
+    mass_filter : Optional[HaloMassFilterConfig]
+        Optional ``M200b`` range filter for HR and LR tables.
 
     Returns
     -------
@@ -108,7 +132,12 @@ def build_preprocessing_context(
             tidal_n_grid=tidal_n_grid,
             max_descriptor_batch_files=max_descriptor_batch_files,
         ),
-        calibrate_mass=calibrate_mass,
+        mass_calibration=mass_calibration,
+        mass_filter=(
+            mass_filter
+            if mass_filter is not None
+            else default_halo_mass_filter_config()
+        ),
     )
 
 

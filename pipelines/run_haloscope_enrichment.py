@@ -58,6 +58,16 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
             f"(default: {DEFAULT_ENV_SMOKE_CONFIG}; production: {DEFAULT_ENV_PRODUCTION_CONFIG})."
         ),
     )
+    parser.add_argument(
+        "--tidal-targets",
+        nargs="+",
+        choices=("unit", "fastpm"),
+        metavar="TARGET",
+        help=(
+            "Run only these tidal-anisotropy pipeline targets "
+            "(overrides pipeline.tidal_anisotropy.targets in the JSON config)."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -78,6 +88,8 @@ def main(argv: list[str]) -> int:
     args = _parse_args(argv)
     config_path = Path(args.config)
     config = load_haloscope_enrichment_config(config_path)
+    if args.tidal_targets is not None:
+        config.pipeline_stages.tidal_anisotropy.targets = tuple(args.tidal_targets)
 
     with config_path.open(encoding="utf-8") as handle:
         payload = json.load(handle)

@@ -44,6 +44,7 @@ def rockstar_catalog_column_kwargs(catalog_layout: str) -> dict[str, int]:
             "halo_y_position": UNIT_HLIST_COLUMNS["y"],
             "halo_z_position": UNIT_HLIST_COLUMNS["z"],
             "halo_m200b_position": UNIT_HLIST_COLUMNS["M200b"],
+            "halo_pid_position": UNIT_HLIST_COLUMNS["pid"],
         }
 
     return {
@@ -52,6 +53,7 @@ def rockstar_catalog_column_kwargs(catalog_layout: str) -> dict[str, int]:
         "halo_y_position": ROCKSTAR_LIST_COLUMNS["halo_y"],
         "halo_z_position": ROCKSTAR_LIST_COLUMNS["halo_z"],
         "halo_m200b_position": ROCKSTAR_LIST_COLUMNS["halo_m200b"],
+        "halo_pid_position": ROCKSTAR_LIST_COLUMNS["halo_pid"],
     }
 
 

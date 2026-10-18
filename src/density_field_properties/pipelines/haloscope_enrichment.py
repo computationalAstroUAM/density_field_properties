@@ -7,17 +7,14 @@ from typing import Optional, Sequence, Union
 import numpy as np
 import pandas as pd
 
-from density_field_properties.haloscope import (
-    default_mass_bin_edges,
-    enrich_fastpm_catalog,
-)
+from density_field_properties.haloscope import enrich_fastpm_catalog
+from density_field_properties.haloscope.mass_bin_config import resolve_mass_bin_edges
 from density_field_properties.pipelines.config import (
     HaloscopeEnrichmentConfig,
     resolve_fastpm_boxsize_mpc_h,
     resolve_sim_boxsize_mpc_h,
 )
 from density_field_properties.pipelines.run_defaults import (
-    CALIBRATE_MASS,
     ENV_RADIUS_MPC_H,
     INPUT_FEATURES,
     OUTPUT_FEATURES,
@@ -31,7 +28,7 @@ from density_field_properties.preprocessing.catalog_loaders import (
 from density_field_properties.preprocessing.context import build_preprocessing_context
 from density_field_properties.preprocessing.feature_table import build_feature_tables
 from density_field_properties.preprocessing.input_features.tidal_anisotropy import (
-    TIDAL_ANISOTROPY_FEATURE_NAME,
+    input_features_need_tidal_descriptors,
 )
 from density_field_properties.validation.assembly_bias_panel import (
     write_tidal_assembly_bias_panel,
@@ -87,7 +84,7 @@ def _resolve_tidal_descriptor_dirs(
     tuple[Optional[Path], Optional[Path]]
         Resolved UNIT and FastPM descriptor directories.
     """
-    if TIDAL_ANISOTROPY_FEATURE_NAME not in feature_names:
+    if not input_features_need_tidal_descriptors(feature_names):
         return unit_descriptors_dir, fastpm_descriptors_dir
 
     unit_path = unit_descriptors_dir
@@ -137,7 +134,7 @@ def build_haloscope_feature_tables(
     )
     preprocessing_context = build_preprocessing_context(
         repo_root=root,
-        calibrate_mass=CALIBRATE_MASS,
+        mass_calibration=config.mass_calibration,
         sim_boxsize_mpc_h=resolve_sim_boxsize_mpc_h(config),
         fastpm_boxsize_mpc_h=resolve_fastpm_boxsize_mpc_h(config),
         env_radius_mpc_h=ENV_RADIUS_MPC_H,
@@ -145,6 +142,7 @@ def build_haloscope_feature_tables(
         fastpm_descriptors_dir=fastpm_descriptor_path,
         tidal_n_grid=config.tidal_n_grid,
         max_descriptor_batch_files=config.max_descriptor_batch_files,
+        mass_filter=config.mass_filter,
     )
     return build_feature_tables(
         halos_sim,
@@ -212,7 +210,11 @@ def run_haloscope_enrichment_from_tables(
         release_validation_memory()
         return run_result
 
-    bin_edges = default_mass_bin_edges(np.log10(halos_sim["M200b"].max()))
+    bin_edges = resolve_mass_bin_edges(
+        np.log10(halos_sim["M200b"].max()),
+        halos_fastpm[mass_col_fastpm].to_numpy(),
+        config.mass_bin,
+    )
     output_features = list(OUTPUT_FEATURES)
     if config.run_holdout_validation or config.run_holdout_corner_plots:
         write_sim_holdout_corner_plots(

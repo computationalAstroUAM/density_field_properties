@@ -1,4 +1,4 @@
-"""Tidal anisotropy input feature from precomputed descriptor batches."""
+"""Tidal environment descriptors (anisotropy and overdensity) from precomputed batches."""
 
 import re
 from pathlib import Path
@@ -12,6 +12,11 @@ from density_field_properties.preprocessing.context import SimulationRunContext
 from density_field_properties.preprocessing.input_features.base import InputFeatureAttacher
 
 TIDAL_ANISOTROPY_FEATURE_NAME = "tidal_anisotropy"
+OVERDENSITY_FEATURE_NAME = "overdensity"
+HALO_ENVIRONMENT_DESCRIPTOR_COLUMNS = (
+    TIDAL_ANISOTROPY_FEATURE_NAME,
+    OVERDENSITY_FEATURE_NAME,
+)
 DESCRIPTOR_FILE_PATTERN = re.compile(r"^(\d+)_halo_environment_descriptors\.txt$")
 DESCRIPTOR_COLUMNS = [
     "descriptor_halo_id",
@@ -24,6 +29,24 @@ DESCRIPTOR_COLUMNS = [
     "overdensity",
 ]
 DEFAULT_POSITION_COLUMNS = ("x", "y", "z")
+
+
+def input_features_need_tidal_descriptors(feature_names: Sequence[str]) -> bool:
+    """
+    Return whether any requested INPUT needs tidal descriptor batch files.
+
+    Parameters
+    ----------
+    feature_names : Sequence[str]
+        Haloscope INPUT feature names from run configuration.
+
+    Returns
+    -------
+    bool
+        True when ``tidal_anisotropy`` or ``overdensity`` is requested.
+    """
+    descriptor_features = set(HALO_ENVIRONMENT_DESCRIPTOR_COLUMNS)
+    return bool(descriptor_features.intersection(feature_names))
 
 
 def _descriptor_batch_paths(
@@ -84,7 +107,7 @@ def _load_halo_environment_descriptor_table(
     Returns
     -------
     pd.DataFrame
-        Descriptor rows with grid-cell coordinates and ``tidal_anisotropy``.
+        Descriptor rows with grid-cell coordinates and environment columns.
     """
     batch_paths = _descriptor_batch_paths(descriptor_dir, max_batch_files=max_batch_files)
     tables = [pd.read_csv(path, comment="#", sep=r"\s+", header=None) for path in batch_paths]
@@ -125,6 +148,78 @@ def _grid_merge_keys(
     )
 
 
+def _attach_halo_environment_descriptors(
+    catalog: pd.DataFrame,
+    run_context: SimulationRunContext,
+    columns: Sequence[str],
+    position_columns: Sequence[str] = DEFAULT_POSITION_COLUMNS,
+) -> pd.DataFrame:
+    """
+    Attach halo-environment descriptor columns from precomputed batches.
+
+    Parameters
+    ----------
+    catalog : pd.DataFrame
+        Halo table with position columns in Mpc/h.
+    run_context : SimulationRunContext
+        Descriptor directory and grid resolution.
+    columns : Sequence[str]
+        Subset of ``tidal_anisotropy`` and/or ``overdensity`` to attach.
+    position_columns : Sequence[str], optional
+        Position column names in ``catalog``.
+
+    Returns
+    -------
+    pd.DataFrame
+        The same ``catalog`` instance with the requested columns populated.
+
+    Raises
+    ------
+    ValueError
+        If a column name is unsupported or descriptors are not configured.
+    """
+    requested = tuple(columns)
+    for column_name in requested:
+        if column_name not in HALO_ENVIRONMENT_DESCRIPTOR_COLUMNS:
+            raise ValueError(
+                f"Unsupported halo environment descriptor column {column_name!r}; "
+                f"expected one of {', '.join(HALO_ENVIRONMENT_DESCRIPTOR_COLUMNS)}."
+            )
+    columns_to_fill = tuple(
+        column_name for column_name in requested if column_name not in catalog.columns
+    )
+    if not columns_to_fill:
+        return catalog
+    if run_context.tidal_descriptors_dir is None:
+        raise ValueError(
+            "tidal_anisotropy and overdensity require tidal_descriptors_dir in the run context"
+        )
+
+    descriptors = _load_halo_environment_descriptor_table(
+        run_context.tidal_descriptors_dir,
+        max_batch_files=run_context.max_descriptor_batch_files,
+    )
+    descriptors = descriptors.drop_duplicates(
+        subset=["cell_x", "cell_y", "cell_z"],
+        keep="first",
+    )
+    grid_keys = _grid_merge_keys(
+        catalog[list(position_columns)].to_numpy(dtype=np.float64),
+        run_context.boxsize_mpc_h,
+        run_context.tidal_n_grid,
+    )
+    merged = grid_keys.merge(
+        descriptors[
+            ["cell_x", "cell_y", "cell_z", *HALO_ENVIRONMENT_DESCRIPTOR_COLUMNS]
+        ],
+        on=["cell_x", "cell_y", "cell_z"],
+        how="left",
+    )
+    for column_name in columns_to_fill:
+        catalog[column_name] = merged[column_name].to_numpy()
+    return catalog
+
+
 def _attach_tidal_anisotropy(
     catalog: pd.DataFrame,
     descriptor_dir: Path,
@@ -156,42 +251,45 @@ def _attach_tidal_anisotropy(
     pd.DataFrame
         The same ``catalog`` instance with a ``tidal_anisotropy`` column.
     """
-    descriptors = _load_halo_environment_descriptor_table(
-        descriptor_dir,
-        max_batch_files=max_batch_files,
+    run_context = SimulationRunContext(
+        boxsize_mpc_h=boxsize_mpc_h,
+        tidal_descriptors_dir=descriptor_dir,
+        tidal_n_grid=n_grid,
+        max_descriptor_batch_files=max_batch_files,
     )
-    descriptors = descriptors.drop_duplicates(
-        subset=["cell_x", "cell_y", "cell_z"],
-        keep="first",
+    return _attach_halo_environment_descriptors(
+        catalog,
+        run_context,
+        (TIDAL_ANISOTROPY_FEATURE_NAME,),
+        position_columns=position_columns,
     )
-    grid_keys = _grid_merge_keys(
-        catalog[list(position_columns)].to_numpy(dtype=np.float64),
-        boxsize_mpc_h,
-        n_grid,
-    )
-    merged = grid_keys.merge(
-        descriptors[["cell_x", "cell_y", "cell_z", "tidal_anisotropy"]],
-        on=["cell_x", "cell_y", "cell_z"],
-        how="left",
-    )
-    catalog[TIDAL_ANISOTROPY_FEATURE_NAME] = merged["tidal_anisotropy"].to_numpy()
-    return catalog
 
 
-class TidalAnisotropyFeature(InputFeatureAttacher):
-    """Attach ``tidal_anisotropy`` by merging grid-cell descriptor batches."""
+class HaloEnvironmentDescriptorsAttacher(InputFeatureAttacher):
+    """Attach ``tidal_anisotropy`` and/or ``overdensity`` in one descriptor merge."""
+
+    def __init__(self, columns: Sequence[str]) -> None:
+        """
+        Store the descriptor columns requested in ``input_features``.
+
+        Parameters
+        ----------
+        columns : Sequence[str]
+            Ordered subset of ``tidal_anisotropy`` and ``overdensity``.
+        """
+        self._columns = tuple(columns)
 
     @property
     def feature_names(self) -> tuple[str, ...]:
         """
-        Return the tidal anisotropy column name.
+        Return the descriptor column names attached by this instance.
 
         Returns
         -------
         tuple[str, ...]
-            Single-element tuple with ``tidal_anisotropy``.
+            Requested halo-environment INPUT columns.
         """
-        return (TIDAL_ANISOTROPY_FEATURE_NAME,)
+        return self._columns
 
     def attach(
         self,
@@ -199,7 +297,7 @@ class TidalAnisotropyFeature(InputFeatureAttacher):
         run_context: SimulationRunContext,
     ) -> pd.DataFrame:
         """
-        Merge tidal anisotropy descriptors onto a halo catalog.
+        Merge precomputed halo-environment descriptors onto a halo catalog.
 
         Parameters
         ----------
@@ -211,19 +309,6 @@ class TidalAnisotropyFeature(InputFeatureAttacher):
         Returns
         -------
         pd.DataFrame
-            The same ``catalog`` instance with ``tidal_anisotropy``.
-
-        Raises
-        ------
-        ValueError
-            If ``tidal_descriptors_dir`` is not configured.
+            The same ``catalog`` instance with descriptor columns attached.
         """
-        if run_context.tidal_descriptors_dir is None:
-            raise ValueError("tidal_anisotropy requires tidal_descriptors_dir in the run context")
-        return _attach_tidal_anisotropy(
-            catalog,
-            run_context.tidal_descriptors_dir,
-            run_context.boxsize_mpc_h,
-            run_context.tidal_n_grid,
-            max_batch_files=run_context.max_descriptor_batch_files,
-        )
+        return _attach_halo_environment_descriptors(catalog, run_context, self._columns)
