@@ -4,39 +4,53 @@
     "sim_hlist": "output/tidal_mn5/unit/hlist_1.00000.list",
     "fastpm_list": "output/rockstar_find_parents/fastpm_mn5_tfm/out_8_with_pid.list",
     "repo_root": ".",
-    "output_dir": "output/tidal_mn5"
+    "output_dir": "output/tidal_mn5/haloscope"
   },
   "sample": {
     "box_size_mpc_h": 1000,
     "min_mass_msun_h": 3.219885e12,
+    "max_mass_msun_h": 1.0e13,
     "max_sim_halos": null,
     "max_fastpm_halos": null
   },
   "haloscope": {
-    "input_features": ["t_over_u", "tidal_anisotropy"],
-    "run_holdout_validation": false
+    "input_features": ["overdensity", "tidal_anisotropy"],
+    "run_holdout_validation": true,
+    "min_bin_size": 5,
+    "enriched_parquet_name": "fastpm_out_8_haloscope_tidal_enriched.parquet"
   },
   "tidal": {
-    "n_grid": 512
+    "n_grid": 512,
+    "unit_descriptors_dir": "output/tidal_mn5/unit/tidal_anisotropy",
+    "fastpm_descriptors_dir": "output/tidal_mn5/fastpm/tidal_anisotropy"
   },
   "pipeline": {
     "tidal_anisotropy": {
-      "enabled": true,
+      "enabled": false,
       "targets": ["unit", "fastpm"],
-      "descriptor_batch_size": 100000,
-      "cic_batch_size": 5000000,
       "unit": {
-        "dm_particles_file": "output/tidal_mn5/unit/dm_particles_0.5_128.dat",
         "work_dir": "output/tidal_mn5/unit",
         "catalog_layout": "hlist"
       },
       "fastpm": {
-        "dm_particles_file": "/data21/users/mruiz/fastpm_MN5/fastpm_tfm/output_01/snap_1.0000/1",
         "work_dir": "output/tidal_mn5/fastpm",
         "catalog_layout": "rockstar_list"
       }
     },
-    "preprocess": {"enabled": false},
-    "haloscope": {"enabled": false}
+    "preprocess": {
+      "enabled": true,
+      "hr_parquet_name": "halos_sim_preprocessed.parquet",
+      "lr_parquet_name": "halos_fastpm_preprocessed.parquet"
+    },
+    "haloscope": {"enabled": true}
+  },
+  "validation": {
+    "assembly_bias": {
+      "enabled": true,
+      "n_grid": 128
+    },
+    "holdout_corner_plots": {
+      "enabled": true
+    }
   }
 }
