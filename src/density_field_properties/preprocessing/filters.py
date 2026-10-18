@@ -118,7 +118,7 @@ def filter_mass_range(
         mask &= masses >= min_mass_msun_h
     if max_mass_msun_h is not None:
         mask &= masses <= max_mass_msun_h
-    return frame.loc[mask].copy().reset_index(drop=True)
+    return frame.loc[mask].reset_index(drop=True)
 
 
 def filter_finite_input_features(
