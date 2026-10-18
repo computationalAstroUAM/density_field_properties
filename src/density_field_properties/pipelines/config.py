@@ -36,6 +36,11 @@ from density_field_properties.preprocessing.mass_calibration_config import (
     default_mass_calibration_config,
     parse_mass_calibration_config,
 )
+from density_field_properties.haloscope.mass_bin_config import (
+    HaloscopeMassBinConfig,
+    default_haloscope_mass_bin_config,
+    parse_haloscope_mass_bin_config,
+)
 from density_field_properties.preprocessing.mass_filter_config import (
     HaloMassFilterConfig,
     default_halo_mass_filter_config,
@@ -289,6 +294,8 @@ class HaloscopeEnrichmentConfig:
         LR mass calibration method and hyperparameters for preprocessing.
     mass_filter : HaloMassFilterConfig, optional
         Optional ``M200b`` range applied to HR and LR tables during preprocessing.
+    mass_bin : HaloscopeMassBinConfig, optional
+        Optional log-mass bin edges for Haloscope fit and FastPM enrichment.
     box_size_mpc_h : Optional[float], optional
         Periodic box side length in Mpc/h for both simulations. When ``None``,
         ``SIM_BOXSIZE_MPC_H`` and ``FASTPM_BOXSIZE_MPC_H`` from run defaults apply.
@@ -321,6 +328,7 @@ class HaloscopeEnrichmentConfig:
         default_factory=default_mass_calibration_config
     )
     mass_filter: HaloMassFilterConfig = field(default_factory=default_halo_mass_filter_config)
+    mass_bin: HaloscopeMassBinConfig = field(default_factory=default_haloscope_mass_bin_config)
 
 
 def _optional_path(value: Any) -> Optional[Path]:
@@ -735,6 +743,7 @@ def load_haloscope_enrichment_config(config_path: Path) -> HaloscopeEnrichmentCo
         legacy_calibrate_mass=payload.get("calibrate_mass"),
     )
     mass_filter = parse_halo_mass_filter_config(sample)
+    mass_bin = parse_haloscope_mass_bin_config(haloscope)
 
     return HaloscopeEnrichmentConfig(
         sim_hlist_path=_required_path(
@@ -765,6 +774,7 @@ def load_haloscope_enrichment_config(config_path: Path) -> HaloscopeEnrichmentCo
         collect_tables=bool(payload.get("collect_tables", False)),
         mass_calibration=mass_calibration,
         mass_filter=mass_filter,
+        mass_bin=mass_bin,
     )
 
 

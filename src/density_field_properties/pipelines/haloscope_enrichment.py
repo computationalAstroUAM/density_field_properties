@@ -7,10 +7,8 @@ from typing import Optional, Sequence, Union
 import numpy as np
 import pandas as pd
 
-from density_field_properties.haloscope import (
-    default_mass_bin_edges,
-    enrich_fastpm_catalog,
-)
+from density_field_properties.haloscope import enrich_fastpm_catalog
+from density_field_properties.haloscope.mass_bin_config import resolve_mass_bin_edges
 from density_field_properties.pipelines.config import (
     HaloscopeEnrichmentConfig,
     resolve_fastpm_boxsize_mpc_h,
@@ -212,7 +210,11 @@ def run_haloscope_enrichment_from_tables(
         release_validation_memory()
         return run_result
 
-    bin_edges = default_mass_bin_edges(np.log10(halos_sim["M200b"].max()))
+    bin_edges = resolve_mass_bin_edges(
+        np.log10(halos_sim["M200b"].max()),
+        halos_fastpm[mass_col_fastpm].to_numpy(),
+        config.mass_bin,
+    )
     output_features = list(OUTPUT_FEATURES)
     if config.run_holdout_validation or config.run_holdout_corner_plots:
         write_sim_holdout_corner_plots(

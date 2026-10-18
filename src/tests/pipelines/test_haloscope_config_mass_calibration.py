@@ -45,6 +45,25 @@ def _minimal_config_payload(tmp_path: Path, extra: dict) -> Path:
     return config_path
 
 
+def test_haloscope_mass_bin_parses_from_json(tmp_path):
+    """
+    Optional haloscope.mass_bin configures a single enrichment bin.
+    """
+    (tmp_path / "sim.list").write_text("#\n", encoding="utf-8")
+    (tmp_path / "fastpm.list").write_text("#\n", encoding="utf-8")
+    config_path = _minimal_config_payload(
+        tmp_path,
+        {
+            "haloscope": {
+                "mass_bin": {"log_min_from_fastpm": True, "log_max": 13.0},
+            },
+        },
+    )
+    config = load_haloscope_enrichment_config(config_path)
+    assert config.mass_bin.log_max == pytest.approx(13.0)
+    assert config.mass_bin.log_min_from_fastpm is True
+
+
 def test_sample_mass_filter_parses_from_json(tmp_path):
     """
     Optional ``sample`` mass bounds configure ``mass_filter``.
