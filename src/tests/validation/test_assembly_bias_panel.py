@@ -1,5 +1,7 @@
 """Tests for assembly-bias panel helpers."""
 
+from pathlib import Path
+
 import pytest
 
 
@@ -27,6 +29,55 @@ def test_format_assembly_bias_panel_title(input_features, expected_feature_text)
     )
 
     assert title == (f"input: {expected_feature_text} " "(HR δ: saved CIC, FastPM δ: halo CIC)")
+
+
+def test_resolve_saved_cic_density_paths_use_tidal_work_dirs(tmp_path):
+    """
+    Assembly bias should prefer CIC grids under pipeline tidal work directories.
+    """
+    from density_field_properties.pipelines.config import (
+        HaloscopeEnrichmentConfig,
+        HaloscopePipelineStages,
+        TidalAnisotropyStageConfig,
+        TidalAnisotropyTargetConfig,
+    )
+    from density_field_properties.validation.assembly_bias_panel import (
+        _resolve_saved_cic_density_paths,
+    )
+
+    unit_work = tmp_path / "output" / "tidal_mn5" / "unit"
+    fastpm_work = tmp_path / "output" / "tidal_mn5" / "fastpm"
+    unit_work.mkdir(parents=True)
+    fastpm_work.mkdir(parents=True)
+    unit_density = unit_work / "dm_particles_0.5_128_density"
+    unit_info = unit_work / "dm_particles_0.5_128_density_info.txt"
+    fastpm_density = fastpm_work / "snap_1.0000_density"
+    fastpm_info = fastpm_work / "snap_1.0000_density_info.txt"
+    unit_density.write_bytes(b"u")
+    unit_info.write_text("#box_size,n_grid,n_particles,mass_particle\n", encoding="utf-8")
+    fastpm_density.write_bytes(b"f")
+    fastpm_info.write_text("#box_size,n_grid,n_particles,mass_particle\n", encoding="utf-8")
+
+    config = HaloscopeEnrichmentConfig(
+        sim_hlist_path=tmp_path / "sim.list",
+        fastpm_list_path=tmp_path / "fastpm.list",
+        repo_root=tmp_path,
+        pipeline_stages=HaloscopePipelineStages(
+            tidal_anisotropy=TidalAnisotropyStageConfig(
+                unit=TidalAnisotropyTargetConfig(work_dir=Path("output/tidal_mn5/unit")),
+                fastpm=TidalAnisotropyTargetConfig(work_dir=Path("output/tidal_mn5/fastpm")),
+            ),
+        ),
+    )
+
+    (sim_density_path, sim_info_path), (fastpm_density_path, fastpm_info_path) = (
+        _resolve_saved_cic_density_paths(tmp_path, config)
+    )
+
+    assert sim_density_path == unit_density
+    assert sim_info_path == unit_info
+    assert fastpm_density_path == fastpm_density
+    assert fastpm_info_path == fastpm_info
 
 
 def test_resolve_assembly_bias_context_uses_run_config(tmp_path):

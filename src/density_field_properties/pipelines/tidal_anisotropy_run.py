@@ -4,6 +4,7 @@ import gc
 import logging
 import os
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 
@@ -339,6 +340,27 @@ def run_tidal_anisotropy_pipeline_for_target(
     return descriptors_dir
 
 
+def try_resolve_work_dir_cic_density_paths(work_dir: Path) -> Optional[tuple[Path, Path]]:
+    """
+    Return a CIC density artifact pair from a work directory when uniquely present.
+
+    Parameters
+    ----------
+    work_dir : Path
+        Simulation-specific working directory.
+
+    Returns
+    -------
+    Optional[tuple[Path, Path]]
+        ``(density_binary, density_info_txt)`` paths, or ``None`` when not found.
+    """
+    density_files = sorted(work_dir.glob("*_density"))
+    info_files = sorted(work_dir.glob("*_density_info.txt"))
+    if len(density_files) != 1 or len(info_files) != 1:
+        return None
+    return density_files[0], info_files[0]
+
+
 def _resolve_existing_density_paths(work_dir: Path) -> tuple[Path, Path]:
     """
     Locate a single CIC density artifact pair inside a work directory.
@@ -358,11 +380,10 @@ def _resolve_existing_density_paths(work_dir: Path) -> tuple[Path, Path]:
     FileNotFoundError
         If no unique density artifact pair is found.
     """
-    density_files = sorted(work_dir.glob("*_density"))
-    info_files = sorted(work_dir.glob("*_density_info.txt"))
-    if len(density_files) != 1 or len(info_files) != 1:
+    resolved = try_resolve_work_dir_cic_density_paths(work_dir)
+    if resolved is None:
         raise FileNotFoundError(
             f"Expected one density artifact pair in {work_dir}, "
-            f"found {len(density_files)} density files and {len(info_files)} info files."
+            "but no unique *_density and *_density_info.txt pair was found."
         )
-    return density_files[0], info_files[0]
+    return resolved

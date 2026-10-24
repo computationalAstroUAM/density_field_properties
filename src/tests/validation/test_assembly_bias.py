@@ -20,6 +20,7 @@ from density_field_properties.validation.assembly_bias import (
     assembly_bias_curves_for_catalog,
     halo_overdensity_field_cic,
     joint_assembly_masks,
+    joint_assembly_masks_from_reference,
     load_matter_overdensity,
     paranjape_halo_by_halo_bias,
     solve_joint_percentile,
@@ -108,6 +109,54 @@ def test_assembly_bias_curves_returns_finite_bins():
     assert np.all(upper_mass > 0.0)
     assert np.all(lower_sem >= 0.0)
     assert np.all(upper_sem >= 0.0)
+
+
+def test_joint_assembly_masks_from_reference_uses_reference_percentiles():
+    """
+    Reference thresholds should classify a target sample without recomputing percentiles on it.
+    """
+    reference = np.column_stack([np.linspace(0.0, 1.0, 400), np.linspace(0.0, 1.0, 400)])
+    target = reference + 0.05
+    lower_mask, upper_mask, percentile = joint_assembly_masks_from_reference(
+        target,
+        reference,
+        target_fraction=0.25,
+    )
+    assert 0.0 < percentile < 100.0
+    assert lower_mask.shape == (400,)
+    assert upper_mask.shape == (400,)
+    assert not np.any(lower_mask & upper_mask)
+
+
+def test_assembly_bias_curves_with_reference_thresholds():
+    """
+    LR curves can inherit HR tail thresholds while using predicted properties.
+    """
+    rng = np.random.default_rng(4)
+    bin_edges = np.linspace(11.0, 12.0, 3)
+    hr_mass = 10 ** rng.uniform(11.0, 12.0, size=500)
+    lr_mass = 10 ** rng.uniform(11.0, 12.0, size=500)
+    hr_props = np.column_stack(
+        [
+            rng.normal(size=500),
+            rng.normal(size=500),
+        ]
+    )
+    lr_props = hr_props + 0.1 * rng.normal(size=(500, 2))
+    hr_bias = 1.0 + 0.2 * hr_props[:, 0]
+    lr_bias = 1.0 + 0.2 * lr_props[:, 0]
+
+    curves = assembly_bias_curves_for_catalog(
+        lr_mass,
+        lr_bias,
+        lr_props,
+        bin_edges,
+        threshold_mass=hr_mass,
+        threshold_property_matrix=hr_props,
+    )
+
+    assert len(curves[0]) >= 1
+    assert len(curves[3]) >= 1
 
 
 def test_assembly_bias_curves_select_tails_within_each_mass_bin():

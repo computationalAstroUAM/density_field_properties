@@ -9,9 +9,13 @@ from density_field_properties.pipelines.config import (
     DEFAULT_ENV_SMOKE_CONFIG,
     HaloscopeEnrichmentConfig,
     HaloscopePipelineStages,
+    PreprocessStageConfig,
     TidalAnisotropyStageConfig,
     TidalAnisotropyTargetConfig,
     load_haloscope_enrichment_config,
+    resolve_assembly_bias_enriched_parquet_path,
+    resolve_assembly_bias_hr_parquet_path,
+    resolve_assembly_bias_mass_column_fastpm,
     resolve_dm_mass_particle_msun_h,
     resolve_fastpm_boxsize_mpc_h,
     resolve_fastpm_dm_particles_path,
@@ -80,7 +84,11 @@ def test_load_config_from_custom_json(tmp_path):
                 "validation": {
                     "assembly_bias": {
                         "enabled": True,
+                        "only": True,
                         "n_grid": 64,
+                        "hr_parquet": "hr_cached.parquet",
+                        "enriched_parquet": "lr_enriched_cached.parquet",
+                        "mass_column_fastpm": "M200b_test",
                     },
                     "holdout_corner_plots": {
                         "enabled": True,
@@ -113,9 +121,33 @@ def test_load_config_from_custom_json(tmp_path):
     assert config.fastpm_descriptors_dir == Path("fastpm_desc")
     assert config.enriched_parquet_name == "enriched.parquet"
     assert config.run_assembly_bias_plot is True
+    assert config.assembly_bias_only is True
+    assert config.assembly_bias_hr_parquet == Path("hr_cached.parquet")
+    assert config.assembly_bias_enriched_parquet == Path("lr_enriched_cached.parquet")
+    assert config.assembly_bias_mass_column_fastpm == "M200b_test"
     assert config.assembly_bias_n_grid == 64
     assert config.run_holdout_corner_plots is True
     assert config.collect_tables is True
+
+
+def test_resolve_assembly_bias_cached_parquet_defaults(tmp_path):
+    """
+    Assembly-bias-only runs should default Parquet paths under output_dir.
+    """
+    out_dir = tmp_path / "out"
+    config = HaloscopeEnrichmentConfig(
+        sim_hlist_path=tmp_path / "sim.list",
+        fastpm_list_path=tmp_path / "fastpm.list",
+        output_dir=out_dir,
+        enriched_parquet_name="enriched.parquet",
+        pipeline_stages=HaloscopePipelineStages(
+            preprocess=PreprocessStageConfig(hr_parquet_name="hr.parquet"),
+        ),
+    )
+
+    assert resolve_assembly_bias_hr_parquet_path(config) == out_dir / "hr.parquet"
+    assert resolve_assembly_bias_enriched_parquet_path(config) == out_dir / "enriched.parquet"
+    assert resolve_assembly_bias_mass_column_fastpm(config) == "M200b_cal"
 
 
 def test_resolve_assembly_bias_paths_from_pipeline_config(tmp_path):

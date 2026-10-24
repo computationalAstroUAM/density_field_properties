@@ -16,6 +16,11 @@ Tidal smoke with assembly-bias PDF:
 
     PYTHONPATH=src python pipelines/run_haloscope_enrichment.py \\
         --config config/haloscope_run_tidal_smoke_assembly_bias.json
+
+Assembly-bias PDF only from cached Parquet tables (skip enrichment):
+
+    PYTHONPATH=src python pipelines/run_haloscope_enrichment.py \\
+        --config config/tidal_anisotropy_mn5_assembly_bias_only.json
 """
 
 import argparse
@@ -100,7 +105,7 @@ def main(argv: list[str]) -> int:
         "Run settings: run_name=%s config=%s sim_hlist=%s fastpm_list=%s "
         "max_sim_halos=%s max_fastpm_halos=%s max_descriptor_batches=%s "
         "min_bin_size=%s output_dir=%s input_features=%s assembly_bias=%s "
-        "pipeline_tidal=%s pipeline_preprocess=%s pipeline_haloscope=%s",
+        "assembly_bias_only=%s pipeline_tidal=%s pipeline_preprocess=%s pipeline_haloscope=%s",
         run_name,
         config_path,
         config.sim_hlist_path,
@@ -112,6 +117,7 @@ def main(argv: list[str]) -> int:
         config.output_dir,
         config.input_features,
         config.run_assembly_bias_plot,
+        config.assembly_bias_only,
         stages.tidal_anisotropy.enabled,
         stages.preprocess.enabled,
         stages.haloscope.enabled,
@@ -127,10 +133,13 @@ def main(argv: list[str]) -> int:
     else:
         logging.info("Pipeline finished without Haloscope enrichment output.")
     if config.run_assembly_bias_plot:
-        logging.info(
-            "Assembly bias panel written to %s",
-            config.output_dir / ASSEMBLY_BIAS_TIDAL_PDF_NAME,
-        )
+        if config.assembly_bias_only and isinstance(result, Path):
+            logging.info("Assembly bias panel written to %s", result)
+        elif not config.assembly_bias_only:
+            logging.info(
+                "Assembly bias panel written to %s",
+                config.output_dir / ASSEMBLY_BIAS_TIDAL_PDF_NAME,
+            )
     return 0
 
 

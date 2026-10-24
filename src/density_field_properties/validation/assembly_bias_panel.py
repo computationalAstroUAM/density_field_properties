@@ -17,6 +17,9 @@ from density_field_properties.pipelines.config import (
     resolve_sim_boxsize_mpc_h,
     resolve_sim_dm_particles_path,
 )
+from density_field_properties.pipelines.tidal_anisotropy_run import (
+    try_resolve_work_dir_cic_density_paths,
+)
 from density_field_properties.pipelines.run_defaults import (
     ASSEMBLY_BIAS_DM_BATCH_SIZE,
     DM_MASS_PARTICLE_MSUN_H,
@@ -109,6 +112,59 @@ def _resolve_assembly_bias_context(
     )
 
 
+def _resolve_saved_cic_density_paths(
+    repo_root: Path,
+    config: Optional[HaloscopeEnrichmentConfig],
+) -> tuple[tuple[Path, Path], tuple[Path, Path]]:
+    """
+    Resolve saved CIC density paths for HR and FastPM assembly-bias diagnostics.
+
+    When a run config defines tidal-anisotropy ``work_dir`` values with a unique
+    density artifact pair, those paths take precedence over ``run_defaults``.
+
+    Parameters
+    ----------
+    repo_root : Path
+        Repository root for resolving relative work directories.
+    config : Optional[HaloscopeEnrichmentConfig]
+        Haloscope run configuration.
+
+    Returns
+    -------
+    tuple[tuple[Path, Path], tuple[Path, Path]]
+        ``((sim_density, sim_info), (fastpm_density, fastpm_info))`` paths.
+    """
+    sim_density_path, sim_density_info_path = default_sim_saved_cic_density_paths()
+    fastpm_density_path, fastpm_density_info_path = default_fastpm_saved_cic_density_paths()
+    if config is None:
+        return (sim_density_path, sim_density_info_path), (
+            fastpm_density_path,
+            fastpm_density_info_path,
+        )
+
+    tidal_stage = config.pipeline_stages.tidal_anisotropy
+    unit_work_dir = tidal_stage.unit.work_dir
+    if unit_work_dir is not None:
+        unit_dir = unit_work_dir if unit_work_dir.is_absolute() else repo_root / unit_work_dir
+        unit_paths = try_resolve_work_dir_cic_density_paths(unit_dir)
+        if unit_paths is not None:
+            sim_density_path, sim_density_info_path = unit_paths
+
+    fastpm_work_dir = tidal_stage.fastpm.work_dir
+    if fastpm_work_dir is not None:
+        fastpm_dir = (
+            fastpm_work_dir if fastpm_work_dir.is_absolute() else repo_root / fastpm_work_dir
+        )
+        fastpm_paths = try_resolve_work_dir_cic_density_paths(fastpm_dir)
+        if fastpm_paths is not None:
+            fastpm_density_path, fastpm_density_info_path = fastpm_paths
+
+    return (sim_density_path, sim_density_info_path), (
+        fastpm_density_path,
+        fastpm_density_info_path,
+    )
+
+
 def write_tidal_assembly_bias_panel(
     halos_sim: pd.DataFrame,
     halos_fastpm_enriched: pd.DataFrame,
@@ -155,8 +211,10 @@ def write_tidal_assembly_bias_panel(
 
     log_mass_bins = default_mass_bin_edges(np.log10(halos_sim["M200b"].max()))
 
-    sim_density_path, sim_density_info_path = default_sim_saved_cic_density_paths()
-    fastpm_density_path, fastpm_density_info_path = default_fastpm_saved_cic_density_paths()
+    (sim_density_path, sim_density_info_path), (
+        fastpm_density_path,
+        fastpm_density_info_path,
+    ) = _resolve_saved_cic_density_paths(root, config)
     delta_sim, sim_delta_mode = load_sim_matter_overdensity(
         root,
         sim_boxsize_mpc_h,
@@ -222,6 +280,8 @@ def write_tidal_assembly_bias_panel(
         fp_for_bias["b1"].to_numpy(),
         lr_props,
         log_mass_bins,
+        threshold_mass=halos_sim["M200b"].to_numpy(),
+        threshold_property_matrix=hr_props,
     )
 
     output_path = out_dir / ASSEMBLY_BIAS_TIDAL_PDF_NAME

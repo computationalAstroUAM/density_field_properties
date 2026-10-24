@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pandas as pd
+import pytest
 
 from density_field_properties.pipelines.config import (
     HaloscopeEnrichmentConfig,
@@ -15,6 +16,7 @@ from density_field_properties.pipelines.config import (
 )
 from density_field_properties.pipelines.haloscope_pipeline import (
     _resolve_descriptor_dirs_from_pipeline,
+    run_assembly_bias_from_cached_tables,
     run_haloscope_pipeline,
 )
 
@@ -108,6 +110,54 @@ def test_resolve_descriptor_dirs_from_pipeline_work_dirs(tmp_path):
 
     assert config.unit_descriptors_dir == unit_work / "tidal_anisotropy"
     assert config.fastpm_descriptors_dir == fastpm_work / "tidal_anisotropy"
+
+
+def test_run_haloscope_pipeline_assembly_bias_only(tmp_path):
+    """
+    Assembly-bias-only mode should load Parquet tables and skip enrichment.
+    """
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    hr_path = out_dir / "hr.parquet"
+    enriched_path = out_dir / "enriched.parquet"
+    hr = pd.DataFrame({"M200b": [1.0e12]})
+    lr = pd.DataFrame({"M200b_cal": [9.0e11], "cv": [1.0], "Spin": [0.1], "ca": [0.9], "ba": [0.8]})
+    hr.to_parquet(hr_path, index=False)
+    lr.to_parquet(enriched_path, index=False)
+
+    stages = HaloscopePipelineStages(
+        preprocess=PreprocessStageConfig(hr_parquet_name="hr.parquet"),
+        haloscope=HaloscopeStageConfig(enabled=False),
+    )
+    config = _minimal_config(tmp_path, stages)
+    config.output_dir = out_dir
+    config.run_assembly_bias_plot = True
+    config.assembly_bias_only = True
+    config.enriched_parquet_name = "enriched.parquet"
+    config.input_features = ("env",)
+
+    with patch(
+        "density_field_properties.pipelines.haloscope_pipeline.write_tidal_assembly_bias_panel",
+        return_value=out_dir / "assembly_bias_tidal_input.pdf",
+    ) as write_panel:
+        result = run_haloscope_pipeline(config)
+
+    assert result == out_dir / "assembly_bias_tidal_input.pdf"
+    write_panel.assert_called_once()
+    called_hr = write_panel.call_args[0][0]
+    assert called_hr["M200b"].iloc[0] == 1.0e12
+
+
+def test_run_assembly_bias_from_cached_tables_requires_enabled_flag(tmp_path):
+    """
+    Cached assembly-bias runs should fail when validation assembly bias is disabled.
+    """
+    config = _minimal_config(tmp_path, HaloscopePipelineStages())
+    config.run_assembly_bias_plot = False
+    config.assembly_bias_only = True
+
+    with pytest.raises(ValueError, match="assembly_bias.only requires"):
+        run_assembly_bias_from_cached_tables(config)
 
 
 def test_run_haloscope_pipeline_preprocess_only(tmp_path):

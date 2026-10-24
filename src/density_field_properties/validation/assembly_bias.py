@@ -96,6 +96,40 @@ def joint_assembly_masks(
     return lower_mask, upper_mask, percentile
 
 
+def joint_assembly_masks_from_reference(
+    properties: np.ndarray,
+    reference_properties: np.ndarray,
+    target_fraction: float = 0.25,
+) -> Tuple[np.ndarray, np.ndarray, float]:
+    """
+    Joint tail masks using percentile thresholds from a reference property sample.
+
+    Parameters
+    ----------
+    properties : np.ndarray
+        Halo properties with shape ``(n_halos, n_properties)`` to classify.
+    reference_properties : np.ndarray
+        Reference sample used to define tail thresholds in each property.
+    target_fraction : float, optional
+        Target fraction for each tail (default 25%).
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray, float]
+        ``lower_mask``, ``upper_mask``, and the solved lower-tail percentile ``p``.
+    """
+    percentile = solve_joint_percentile(
+        reference_properties,
+        target_fraction=target_fraction,
+        tail="lower",
+    )
+    lower_thresholds = np.percentile(reference_properties, percentile, axis=0)
+    upper_thresholds = np.percentile(reference_properties, 100.0 - percentile, axis=0)
+    lower_mask = np.all(properties < lower_thresholds, axis=1)
+    upper_mask = np.all(properties > upper_thresholds, axis=1)
+    return lower_mask, upper_mask, percentile
+
+
 def halo_overdensity_field_cic(
     positions_mpc_h: np.ndarray,
     weights: np.ndarray,
@@ -524,6 +558,8 @@ def assembly_bias_curves_for_catalog(
     property_matrix: np.ndarray,
     log_mass_bin_edges: np.ndarray,
     target_fraction: float = 0.25,
+    threshold_mass: Optional[np.ndarray] = None,
+    threshold_property_matrix: Optional[np.ndarray] = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Upper and lower assembly-bias ``b_1(M)`` curves for one halo catalog.
@@ -544,6 +580,13 @@ def assembly_bias_curves_for_catalog(
         Bin edges in ``log10(M200b)``.
     target_fraction : float, optional
         Joint tail fraction within each mass bin (default 25%).
+    threshold_mass : Optional[np.ndarray], optional
+        Linear masses for ``threshold_property_matrix`` when tail cuts are defined
+        from a reference catalog (e.g. HR truth for LR+HALOSCOPE curves).
+    threshold_property_matrix : Optional[np.ndarray], optional
+        Reference properties aligned with ``threshold_mass``. When set together with
+        ``threshold_mass``, tail thresholds in each bin come from this reference sample
+        and are applied to ``property_matrix``.
 
     Returns
     -------
@@ -551,7 +594,13 @@ def assembly_bias_curves_for_catalog(
         ``lower_mass``, ``lower_bias``, ``lower_sem``, ``upper_mass``, ``upper_bias``,
         ``upper_sem``.
     """
+    use_reference_thresholds = (
+        threshold_mass is not None and threshold_property_matrix is not None
+    )
+    if use_reference_thresholds and len(threshold_mass) != len(threshold_property_matrix):
+        raise ValueError("threshold_mass and threshold_property_matrix must have equal length")
     log_mass = np.log10(mass)
+    threshold_log_mass = np.log10(threshold_mass) if use_reference_thresholds else None
     lower_mass = []
     lower_bias = []
     lower_sem = []
@@ -568,10 +617,23 @@ def assembly_bias_curves_for_catalog(
 
         bin_bias = bias[in_bin]
         bin_properties = property_matrix[in_bin]
-        lower_mask, upper_mask, _ = joint_assembly_masks(
-            bin_properties,
-            target_fraction=target_fraction,
-        )
+        if use_reference_thresholds:
+            reference_in_bin = (threshold_log_mass >= log_mass_low) & (
+                threshold_log_mass < log_mass_high
+            )
+            if not np.any(reference_in_bin):
+                continue
+            reference_properties = threshold_property_matrix[reference_in_bin]
+            lower_mask, upper_mask, _ = joint_assembly_masks_from_reference(
+                bin_properties,
+                reference_properties,
+                target_fraction=target_fraction,
+            )
+        else:
+            lower_mask, upper_mask, _ = joint_assembly_masks(
+                bin_properties,
+                target_fraction=target_fraction,
+            )
         lower_values = bin_bias[lower_mask]
         upper_values = bin_bias[upper_mask]
         if lower_values.size == 0 or upper_values.size == 0:

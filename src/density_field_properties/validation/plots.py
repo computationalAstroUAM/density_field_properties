@@ -124,7 +124,13 @@ def plot_assembly_bias_env_panel(
     ratio_axis.plot(reference_lower_mass, ratio_lower, color="black", linewidth=2, linestyle="--")
     ratio_axis.set_ylabel("ratio with HR")
     ratio_axis.set_xlabel(r"$M_{200b}$ [$h^{-1} M_\odot$]")
-    ratio_axis.set_ylim(0.88, 1.12)
+    finite_ratios = np.concatenate([ratio_upper, ratio_lower])
+    finite_ratios = finite_ratios[np.isfinite(finite_ratios)]
+    if finite_ratios.size > 0:
+        ratio_min = float(np.min(finite_ratios))
+        ratio_max = float(np.max(finite_ratios))
+        ratio_margin = max(0.02, 0.05 * (ratio_max - ratio_min))
+        ratio_axis.set_ylim(ratio_min - ratio_margin, ratio_max + ratio_margin)
 
     fig.tight_layout()
     if output_path is not None:

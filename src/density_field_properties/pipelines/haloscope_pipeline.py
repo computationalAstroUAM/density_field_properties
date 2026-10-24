@@ -12,6 +12,12 @@ from density_field_properties.pipelines.config import (
     PIPELINE_TARGET_UNIT,
     HaloscopeEnrichmentConfig,
     TidalAnisotropyTargetConfig,
+    resolve_assembly_bias_enriched_parquet_path,
+    resolve_assembly_bias_hr_parquet_path,
+    resolve_assembly_bias_mass_column_fastpm,
+)
+from density_field_properties.validation.assembly_bias_panel import (
+    write_tidal_assembly_bias_panel,
 )
 from density_field_properties.pipelines.haloscope_enrichment import (
     HaloscopeEnrichmentRun,
@@ -202,6 +208,59 @@ def _save_preprocessed_tables(
     return hr_path, lr_path
 
 
+def run_assembly_bias_from_cached_tables(config: HaloscopeEnrichmentConfig) -> Path:
+    """
+    Build the assembly-bias PDF from cached HR and enriched LR Parquet tables.
+
+    Parameters
+    ----------
+    config : HaloscopeEnrichmentConfig
+        Run configuration with ``assembly_bias_only`` enabled.
+
+    Returns
+    -------
+    Path
+        Path to the written assembly-bias PDF.
+
+    Raises
+    ------
+    ValueError
+        If assembly-bias plotting is disabled in the run configuration.
+    FileNotFoundError
+        If a required Parquet file is missing.
+    """
+    if not config.run_assembly_bias_plot:
+        raise ValueError(
+            "assembly_bias.only requires validation.assembly_bias.enabled to be true."
+        )
+    hr_path = resolve_assembly_bias_hr_parquet_path(config)
+    enriched_path = resolve_assembly_bias_enriched_parquet_path(config)
+    if not hr_path.is_file():
+        raise FileNotFoundError(f"HR Parquet for assembly bias not found: {hr_path}")
+    if not enriched_path.is_file():
+        raise FileNotFoundError(
+            f"Enriched LR Parquet for assembly bias not found: {enriched_path}"
+        )
+
+    feature_names = config.input_features
+    mass_column_fastpm = resolve_assembly_bias_mass_column_fastpm(config)
+    halos_sim = pd.read_parquet(hr_path)
+    halos_fastpm_enriched = pd.read_parquet(enriched_path)
+    logging.info("Assembly bias from cache: HR=%s enriched LR=%s", hr_path, enriched_path)
+    pdf_path = write_tidal_assembly_bias_panel(
+        halos_sim,
+        halos_fastpm_enriched,
+        Path(config.repo_root),
+        Path(config.output_dir),
+        input_features=feature_names,
+        mass_column_fastpm=mass_column_fastpm,
+        assembly_bias_n_grid=config.assembly_bias_n_grid,
+        config=config,
+    )
+    gc.collect()
+    return pdf_path
+
+
 def run_haloscope_pipeline(
     config: HaloscopeEnrichmentConfig,
 ) -> Union[Path, HaloscopeEnrichmentRun, tuple[Path, Path], None]:
@@ -219,6 +278,9 @@ def run_haloscope_pipeline(
         Enriched Parquet path, run object, preprocess outputs, or ``None`` when
         only the tidal-anisotropy stage ran.
     """
+    if config.assembly_bias_only:
+        return run_assembly_bias_from_cached_tables(config)
+
     stages = config.pipeline_stages
     if stages.tidal_anisotropy.enabled:
         run_tidal_anisotropy_stage(config)

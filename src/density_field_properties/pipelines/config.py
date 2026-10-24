@@ -284,6 +284,17 @@ class HaloscopeEnrichmentConfig:
         Output Parquet filename inside ``output_dir``.
     run_assembly_bias_plot : bool, optional
         If True, write the tidal assembly-bias PDF after enrichment.
+    assembly_bias_only : bool, optional
+        If True, skip pipeline stages and rebuild the assembly-bias PDF from
+        cached HR/LR Parquet tables under ``output_dir``.
+    assembly_bias_hr_parquet : Optional[Path], optional
+        HR table Parquet for ``assembly_bias_only``; defaults to the preprocess
+        HR filename inside ``output_dir``.
+    assembly_bias_enriched_parquet : Optional[Path], optional
+        Enriched LR Parquet for ``assembly_bias_only``; defaults to
+        ``enriched_parquet_name`` inside ``output_dir``.
+    assembly_bias_mass_column_fastpm : Optional[str], optional
+        LR mass column for assembly-bias binning when reading cached tables.
     assembly_bias_n_grid : int, optional
         Grid resolution for the Paranjape assembly-bias diagnostic.
     run_holdout_corner_plots : bool, optional
@@ -321,6 +332,10 @@ class HaloscopeEnrichmentConfig:
     tidal_n_grid: int = TIDAL_DENSITY_N_GRID
     enriched_parquet_name: str = ENRICHED_PARQUET_NAME
     run_assembly_bias_plot: bool = False
+    assembly_bias_only: bool = False
+    assembly_bias_hr_parquet: Optional[Path] = None
+    assembly_bias_enriched_parquet: Optional[Path] = None
+    assembly_bias_mass_column_fastpm: Optional[str] = None
     assembly_bias_n_grid: int = DEFAULT_ASSEMBLY_BIAS_N_GRID
     run_holdout_corner_plots: bool = False
     collect_tables: bool = False
@@ -680,6 +695,68 @@ def resolve_fastpm_dm_particles_path(config: HaloscopeEnrichmentConfig) -> Optio
     return default_fastpm_dm_particles_path()
 
 
+def resolve_assembly_bias_hr_parquet_path(config: HaloscopeEnrichmentConfig) -> Path:
+    """
+    Resolve the HR Parquet path for assembly-bias-only runs.
+
+    Parameters
+    ----------
+    config : HaloscopeEnrichmentConfig
+        Run configuration loaded from JSON or built programmatically.
+
+    Returns
+    -------
+    Path
+        HR table Parquet path.
+    """
+    if config.assembly_bias_hr_parquet is not None:
+        return Path(config.assembly_bias_hr_parquet)
+    out_dir = Path(config.output_dir)
+    hr_name = config.pipeline_stages.preprocess.hr_parquet_name
+    return out_dir / hr_name
+
+
+def resolve_assembly_bias_enriched_parquet_path(config: HaloscopeEnrichmentConfig) -> Path:
+    """
+    Resolve the enriched LR Parquet path for assembly-bias-only runs.
+
+    Parameters
+    ----------
+    config : HaloscopeEnrichmentConfig
+        Run configuration loaded from JSON or built programmatically.
+
+    Returns
+    -------
+    Path
+        Enriched LR table Parquet path.
+    """
+    if config.assembly_bias_enriched_parquet is not None:
+        return Path(config.assembly_bias_enriched_parquet)
+    out_dir = Path(config.output_dir)
+    return out_dir / config.enriched_parquet_name
+
+
+def resolve_assembly_bias_mass_column_fastpm(config: HaloscopeEnrichmentConfig) -> str:
+    """
+    Resolve the LR mass column used for assembly-bias binning.
+
+    Parameters
+    ----------
+    config : HaloscopeEnrichmentConfig
+        Run configuration loaded from JSON or built programmatically.
+
+    Returns
+    -------
+    str
+        Mass column name on the enriched LR table.
+    """
+    if config.assembly_bias_mass_column_fastpm is not None:
+        return config.assembly_bias_mass_column_fastpm
+    if config.mass_calibration.enabled:
+        return config.mass_calibration.calibrated_column
+    return config.mass_calibration.matching.lr_mass_column
+
+
 def resolve_dm_mass_particle_msun_h(config: HaloscopeEnrichmentConfig) -> float:
     """
     Resolve the DM particle mass used for assembly-bias CIC deposition.
@@ -769,6 +846,10 @@ def load_haloscope_enrichment_config(config_path: Path) -> HaloscopeEnrichmentCo
         tidal_n_grid=int(tidal.get("n_grid", TIDAL_DENSITY_N_GRID)),
         enriched_parquet_name=str(haloscope.get("enriched_parquet_name", ENRICHED_PARQUET_NAME)),
         run_assembly_bias_plot=bool(assembly_bias.get("enabled", False)),
+        assembly_bias_only=bool(assembly_bias.get("only", False)),
+        assembly_bias_hr_parquet=_optional_path(assembly_bias.get("hr_parquet")),
+        assembly_bias_enriched_parquet=_optional_path(assembly_bias.get("enriched_parquet")),
+        assembly_bias_mass_column_fastpm=assembly_bias.get("mass_column_fastpm"),
         assembly_bias_n_grid=int(assembly_bias.get("n_grid", DEFAULT_ASSEMBLY_BIAS_N_GRID)),
         run_holdout_corner_plots=bool(holdout_corner_plots.get("enabled", False)),
         collect_tables=bool(payload.get("collect_tables", False)),
