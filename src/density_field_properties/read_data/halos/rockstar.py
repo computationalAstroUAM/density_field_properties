@@ -1,5 +1,6 @@
 import bz2
 import logging
+from pathlib import Path
 from typing import Generator, Optional, Tuple
 
 import numpy as np
@@ -141,6 +142,101 @@ def read_rockstar_cosmology_header(path: str) -> Optional[Cosmology]:
         return None
 
 
+def read_rockstar_id_header_column_names(path: str) -> Optional[list[str]]:
+    """
+    Return column names from the first Rockstar header line starting with ``#ID``.
+
+    Parameters
+    ----------
+    path : str
+        Path to a Rockstar ``.list`` or ``.list.bz2`` file.
+
+    Returns
+    -------
+    Optional[list[str]]
+        Header tokens after the leading ``#``, or ``None`` when no ``#ID`` line exists.
+    """
+    with _open_rockstar_catalog_file(path) as handle:
+        for line in handle:
+            if not line.startswith("#"):
+                break
+            tokens = line[1:].strip().split()
+            if tokens and tokens[0] == "ID":
+                return tokens
+    return None
+
+
+def rockstar_pid_column_index(path: str) -> Optional[int]:
+    """
+    Return the 0-based ``PID`` column index when the Rockstar header lists it.
+
+    Parameters
+    ----------
+    path : str
+        Path to a Rockstar ``.list`` or ``.list.bz2`` file.
+
+    Returns
+    -------
+    Optional[int]
+        Index of ``PID`` in the header, or ``None`` when the column is absent.
+    """
+    header = read_rockstar_id_header_column_names(path)
+    if header is None:
+        return None
+    try:
+        return header.index("PID")
+    except ValueError:
+        return None
+
+
+def resolve_rockstar_pid_filter(
+    path: str,
+    halo_pid_position: int,
+    filter_by_pid: bool,
+) -> tuple[bool, int]:
+    """
+    Decide whether to filter subhalos and which column holds the parent ID.
+
+    When a ``#ID`` header line exists but omits ``PID`` (typical FastPM ``out_*.list``
+    files), host filtering is disabled and a warning is logged. Catalogs without a
+    ``#ID`` line keep the caller-supplied ``halo_pid_position``.
+
+    Parameters
+    ----------
+    path : str
+        Path to a Rockstar catalog file.
+    halo_pid_position : int
+        Default zero-based PID column index from layout maps.
+    filter_by_pid : bool
+        Whether the caller requested host-only filtering.
+
+    Returns
+    -------
+    tuple[bool, int]
+        Effective ``filter_by_pid`` flag and PID column index for data rows.
+    """
+    if not filter_by_pid:
+        return False, halo_pid_position
+
+    header_pid = rockstar_pid_column_index(path)
+    if header_pid is not None:
+        return True, header_pid
+
+    if read_rockstar_id_header_column_names(path) is None:
+        logging.warning(
+            "Rockstar catalog %s has no column names; using PID index %i.",
+            Path(path).name,
+            halo_pid_position,
+        )
+        return True, halo_pid_position
+
+    logging.warning(
+        "Rockstar catalog %s has no PID column; loading all halos as centrals.",
+        Path(path).name,
+    )
+    return False, halo_pid_position
+
+
 class RockstarCatalogReader(HaloCatalogReader):
     calog_name: str = "rockstar"
 
@@ -215,6 +311,12 @@ class RockstarCatalogReader(HaloCatalogReader):
         if isinstance(cosmology, Cosmology):
             positions = (0, 1, 2, 3, 4, 5)
 
+        apply_pid_filter, pid_column = resolve_rockstar_pid_filter(
+            path,
+            halo_pid_position,
+            filter_by_pid,
+        )
+
         with _open_rockstar_catalog_file(path) as handle:
             for line in handle:
                 if line.startswith("#"):
@@ -226,9 +328,10 @@ class RockstarCatalogReader(HaloCatalogReader):
                 halo_y = float(cols[halo_y_position])
                 halo_z = float(cols[halo_z_position])
                 m200b = float(cols[halo_m200b_position])
-                pid = int(cols[halo_pid_position])
-                if filter_by_pid and pid > -1: # -1 is a main halo
-                    continue
+                if apply_pid_filter:
+                    pid = int(cols[pid_column])
+                    if pid > -1:
+                        continue
 
                 row = (halo_id, halo_x, halo_y, halo_z, m200b)
                 if isinstance(cosmology, Cosmology):
@@ -245,8 +348,7 @@ class RockstarCatalogReader(HaloCatalogReader):
         extra_columns = None
         if extra_lists is not None:
             extra_columns = {
-                name: np.array(values, dtype=np.float64)
-                for name, values in extra_lists.items()
+                name: np.array(values, dtype=np.float64) for name, values in extra_lists.items()
             }
         return HaloCatalogData(np.array(results), *positions, extra_columns=extra_columns)
 
@@ -313,6 +415,12 @@ class RockstarCatalogReader(HaloCatalogReader):
         if isinstance(cosmology, Cosmology):
             positions = (0, 1, 2, 3, 4, 5)
 
+        apply_pid_filter, pid_column = resolve_rockstar_pid_filter(
+            path,
+            halo_pid_position,
+            filter_by_pid,
+        )
+
         with _open_rockstar_catalog_file(path) as handle:
             handle.seek(start_offset)
             results = []
@@ -334,9 +442,10 @@ class RockstarCatalogReader(HaloCatalogReader):
                 halo_y = float(cols[halo_y_position])
                 halo_z = float(cols[halo_z_position])
                 m200b = float(cols[halo_m200b_position])
-                pid = int(cols[halo_pid_position])
-                if filter_by_pid and pid > -1: # -1 is a main halo
-                    continue
+                if apply_pid_filter:
+                    pid = int(cols[pid_column])
+                    if pid > -1:
+                        continue
                 row = (halo_id, halo_x, halo_y, halo_z, m200b)
                 if isinstance(cosmology, Cosmology):
                     rg = 4.0 * cosmology.convert_m200b_to_r200b(m200b) / np.sqrt(5.0)

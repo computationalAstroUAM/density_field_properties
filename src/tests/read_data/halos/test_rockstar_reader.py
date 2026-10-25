@@ -9,11 +9,128 @@ from density_field_properties.read_data.halos.rockstar import (
     ROCKSTAR_HALO_COLUMNS_POSITION,
     RockstarCatalogReader,
     read_rockstar_cosmology_header,
+    read_rockstar_id_header_column_names,
+    rockstar_pid_column_index,
 )
 
 FASTPM_COSMO_OM = 0.308900
 FASTPM_COSMO_OL = 0.691100
 FASTPM_COSMO_H = 0.677400
+
+FASTPM_HEADER = (
+    "#ID DescID Mvir Vmax Vrms Rvir Rs Np X Y Z VX VY VZ JX JY JZ Spin "
+    "rs_klypin Mvir_all M200b M200c M500c M2500c Xoff Voff spin_bullock "
+    "b_to_a c_to_a A[x] A[y] A[z] b_to_a(500c) c_to_a(500c) A[x](500c) "
+    "A[y](500c) A[z](500c) T/|U| M_pe_Behroozi M_pe_Diemer Halfmass_Radius "
+    "rvmax NFW_chi2 Ixx Iyy Izz Ixy Iyz Izx Ixx(500c) Iyy(500c) Izz(500c) "
+    "Ixy(500c) Iyz(500c) Izx(500c)"
+)
+
+UNIT_HEADER_WITH_PID = (
+    "#ID DescID Mvir Vmax Vrms Rvir Rs Np X Y Z VX VY VZ JX JY JZ Spin "
+    "rs_klypin Mvir_all M200b M200c M500c M2500c Xoff Voff spin_bullock "
+    "b_to_a c_to_a A[x] A[y] A[z] M_pe_Behroozi PID"
+)
+
+
+def _fastpm_row(halo_id, x, y, z, mass):
+    columns = ["0"] * 55
+    columns[0] = str(halo_id)
+    columns[8] = str(x)
+    columns[9] = str(y)
+    columns[10] = str(z)
+    columns[20] = str(mass)
+    return " ".join(columns)
+
+
+def _unit_row_with_pid(halo_id, pid, x, y, z, mass):
+    columns = ["0"] * 34
+    columns[0] = str(halo_id)
+    columns[8] = str(x)
+    columns[9] = str(y)
+    columns[10] = str(z)
+    columns[20] = str(mass)
+    columns[33] = str(pid)
+    return " ".join(columns)
+
+
+def test_rockstar_header_column_names_reads_id_line(tmp_path):
+    path = tmp_path / "out_8.list"
+    path.write_text(
+        FASTPM_HEADER + "\n" + _fastpm_row(1, 10.0, 20.0, 30.0, 100.0) + "\n",
+        encoding="utf-8",
+    )
+    header = read_rockstar_id_header_column_names(str(path))
+    assert header is not None
+    assert header[0] == "ID"
+    assert "PID" not in header
+
+
+def test_rockstar_pid_column_index_uses_header(tmp_path):
+    fastpm_path = tmp_path / "out_8.list"
+    unit_path = tmp_path / "out_128p.list"
+    fastpm_path.write_text(
+        FASTPM_HEADER + "\n" + _fastpm_row(1, 10.0, 20.0, 30.0, 100.0) + "\n",
+        encoding="utf-8",
+    )
+    unit_path.write_text(
+        UNIT_HEADER_WITH_PID + "\n" + _unit_row_with_pid(1, -1, 10.0, 20.0, 30.0, 100.0) + "\n",
+        encoding="utf-8",
+    )
+    assert rockstar_pid_column_index(str(fastpm_path)) is None
+    assert rockstar_pid_column_index(str(unit_path)) == 33
+
+
+def test_rockstar_reader_fastpm_list_without_pid_loads_all_halos(tmp_path, caplog):
+    path = tmp_path / "out_8.list"
+    rows = [
+        _fastpm_row(1, 10.0, 20.0, 30.0, 100.0),
+        _fastpm_row(2, 40.0, 50.0, 60.0, 200.0),
+    ]
+    path.write_text(FASTPM_HEADER + "\n" + "\n".join(rows) + "\n", encoding="utf-8")
+
+    with caplog.at_level("WARNING"):
+        hcat = RockstarCatalogReader.read_catalog(
+            str(path),
+            filter_by_pid=True,
+            halo_id_position=0,
+            halo_x_position=8,
+            halo_y_position=9,
+            halo_z_position=10,
+            halo_m200b_position=20,
+            halo_pid_position=40,
+        )
+
+    assert hcat.n_halos == 2
+    assert "no PID column" in caplog.text
+
+
+@pytest.mark.parametrize("pid_position", [33, 40, 70])
+def test_rockstar_reader_unit_pid_header_filters_subhalos(tmp_path, pid_position):
+    path = tmp_path / "out_128p.list"
+    path.write_text(
+        UNIT_HEADER_WITH_PID
+        + "\n"
+        + _unit_row_with_pid(1, -1, 1.0, 2.0, 3.0, 100.0)
+        + "\n"
+        + _unit_row_with_pid(2, 5, 4.0, 5.0, 6.0, 200.0)
+        + "\n"
+        + _unit_row_with_pid(3, -1, 7.0, 8.0, 9.0, 300.0)
+        + "\n",
+        encoding="utf-8",
+    )
+    hcat = RockstarCatalogReader.read_catalog(
+        str(path),
+        filter_by_pid=True,
+        halo_id_position=0,
+        halo_x_position=8,
+        halo_y_position=9,
+        halo_z_position=10,
+        halo_m200b_position=20,
+        halo_pid_position=pid_position,
+    )
+    assert hcat.n_halos == 2
+    assert np.all(hcat.halo_id == np.array([1, 3]))
 
 
 def test_read_rockstar_cosmology_header():
@@ -49,6 +166,7 @@ def test_rockstar_reader_basic(tmp_path):
             halo_y_position=12,
             halo_z_position=13,
             halo_m200b_position=14,
+            filter_by_pid=False,
         )
 
     assert hcat.n_halos == 2
@@ -75,6 +193,7 @@ def test_rockstar_reader_respects_n_lines(tmp_path):
         halo_y_position=12,
         halo_z_position=13,
         halo_m200b_position=14,
+        filter_by_pid=False,
     )
 
     assert hcat.n_halos == 2
@@ -99,6 +218,7 @@ def test_rockstar_batch_generator(tmp_path):
             halo_y_position=12,
             halo_z_position=13,
             halo_m200b_position=14,
+            filter_by_pid=False,
         )
         batch, start, end = next(gen)
 

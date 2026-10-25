@@ -16,13 +16,17 @@ from density_field_properties.read_data.halos.column_maps import (
     ROCKSTAR_LIST_COLUMNS,
     UNIT_HLIST_TRAINING_EXTRA_COLUMN_POSITIONS,
 )
-from density_field_properties.read_data.halos.rockstar import RockstarCatalogReader
+from density_field_properties.read_data.halos.rockstar import (
+    RockstarCatalogReader,
+    resolve_rockstar_pid_filter,
+)
 
 
 def _read_host_catalog_rows(
     path: Path,
     pid_index: int,
     max_hosts: Optional[int] = None,
+    filter_by_pid: bool = True,
 ) -> list[list[str]]:
     """
     Read data rows for host halos only from a Rockstar-style catalog file.
@@ -35,12 +39,19 @@ def _read_host_catalog_rows(
         Zero-based parent-ID column index; ``-1`` marks a host halo.
     max_hosts : Optional[int], optional
         Stop after this many host rows.
+    filter_by_pid : bool, optional
+        When False, every data row is kept (FastPM lists without a PID column).
 
     Returns
     -------
     list[list[str]]
         Tokenized host rows in file order.
     """
+    apply_pid_filter, pid_column = resolve_rockstar_pid_filter(
+        str(path),
+        pid_index,
+        filter_by_pid,
+    )
     opener = bz2.open if path.suffix == ".bz2" else open
     mode = "rt" if path.suffix == ".bz2" else "r"
     rows: list[list[str]] = []
@@ -49,7 +60,7 @@ def _read_host_catalog_rows(
             if line.startswith("#"):
                 continue
             cols = line.split()
-            if int(cols[pid_index]) != -1:
+            if apply_pid_filter and int(cols[pid_column]) != -1:
                 continue
             rows.append(cols)
             if max_hosts is not None and len(rows) >= max_hosts:
