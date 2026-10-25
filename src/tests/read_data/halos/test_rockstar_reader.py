@@ -81,16 +81,15 @@ def test_rockstar_pid_column_index_uses_header(tmp_path):
     assert rockstar_pid_column_index(str(unit_path)) == 33
 
 
-def test_rockstar_reader_fastpm_list_without_pid_loads_all_halos(tmp_path, caplog):
+def test_rockstar_reader_fastpm_list_without_pid_raises_when_filtering(tmp_path):
     path = tmp_path / "out_8.list"
-    rows = [
-        _fastpm_row(1, 10.0, 20.0, 30.0, 100.0),
-        _fastpm_row(2, 40.0, 50.0, 60.0, 200.0),
-    ]
-    path.write_text(FASTPM_HEADER + "\n" + "\n".join(rows) + "\n", encoding="utf-8")
+    path.write_text(
+        FASTPM_HEADER + "\n" + _fastpm_row(1, 10.0, 20.0, 30.0, 100.0) + "\n",
+        encoding="utf-8",
+    )
 
-    with caplog.at_level("WARNING"):
-        hcat = RockstarCatalogReader.read_catalog(
+    with pytest.raises(ValueError, match="no PID column"):
+        RockstarCatalogReader.read_catalog(
             str(path),
             filter_by_pid=True,
             halo_id_position=0,
@@ -101,8 +100,27 @@ def test_rockstar_reader_fastpm_list_without_pid_loads_all_halos(tmp_path, caplo
             halo_pid_position=40,
         )
 
+
+def test_rockstar_reader_fastpm_list_without_pid_loads_all_halos_when_disabled(tmp_path):
+    path = tmp_path / "out_8.list"
+    rows = [
+        _fastpm_row(1, 10.0, 20.0, 30.0, 100.0),
+        _fastpm_row(2, 40.0, 50.0, 60.0, 200.0),
+    ]
+    path.write_text(FASTPM_HEADER + "\n" + "\n".join(rows) + "\n", encoding="utf-8")
+
+    hcat = RockstarCatalogReader.read_catalog(
+        str(path),
+        filter_by_pid=False,
+        halo_id_position=0,
+        halo_x_position=8,
+        halo_y_position=9,
+        halo_z_position=10,
+        halo_m200b_position=20,
+        halo_pid_position=40,
+    )
+
     assert hcat.n_halos == 2
-    assert "no PID column" in caplog.text
 
 
 @pytest.mark.parametrize("pid_position", [33, 40, 70])
@@ -275,7 +293,7 @@ def test_rockstar_reader_with_fastpm_cosmology_header():
         tmpfile_name = os.path.join(tmpdir, "out_0.list")
         with open(tmpfile_name, "w") as tmpfile:
             tmpfile.write(txt)
-        hcat = RockstarCatalogReader.read_catalog(tmpfile_name)
+        hcat = RockstarCatalogReader.read_catalog(tmpfile_name, filter_by_pid=False)
 
     assert hcat.n_halos == 1
     assert hcat.rg_position is not None
@@ -292,7 +310,7 @@ def test_rockstar_reader_fastpm_list_fixture():
         tmpfile_name = os.path.join(tmpdir, "out_0.list")
         with open(tmpfile_name, "w") as tmpfile:
             tmpfile.write(txt)
-        hcat = RockstarCatalogReader.read_catalog(tmpfile_name)
+        hcat = RockstarCatalogReader.read_catalog(tmpfile_name, filter_by_pid=False)
 
     assert hcat.n_halos == 2
     assert np.all(hcat.halo_id == np.array([100, 101]))
@@ -315,6 +333,7 @@ def test_rockstar_batch_generator_fastpm_header():
         gen = RockstarCatalogReader.read_catalog_batch_generator(
             tmpfile_name,
             batch_size=1,
+            filter_by_pid=False,
         )
         batch1, start1, end1 = next(gen)
         batch2, start2, end2 = next(gen)

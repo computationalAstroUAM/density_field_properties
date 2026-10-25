@@ -394,16 +394,17 @@ def main(argv: list[str]) -> int:
         )
 
     volume = args.box_size_mpc_h**3
-    filter_by_pid = not args.all_halos
+    filter_by_pid_unit = not args.all_halos
 
     logging.info("Loading halo masses catalogs")
     masses_fastpm = load_halo_masses_from_catalog(
         args.halo_catalog_fastpm,
-        filter_by_pid=filter_by_pid,
+        filter_by_pid=False,
         params=ROCKSTAR_HALO_COLUMNS_POSITION_FASTPM,
     )
     masses_unit = load_halo_masses_from_catalog(
-        args.halo_catalog_unit, filter_by_pid=filter_by_pid
+        args.halo_catalog_unit,
+        filter_by_pid=filter_by_pid_unit,
     )
 
     masses_unit, masses_fastpm = _apply_min_particle_cut(

@@ -198,8 +198,9 @@ def resolve_rockstar_pid_filter(
     Decide whether to filter subhalos and which column holds the parent ID.
 
     When a ``#ID`` header line exists but omits ``PID`` (typical FastPM ``out_*.list``
-    files), host filtering is disabled and a warning is logged. Catalogs without a
-    ``#ID`` line keep the caller-supplied ``halo_pid_position``.
+    files) and ``filter_by_pid`` is True, raises ``ValueError``. Pass
+    ``filter_by_pid=False`` for those catalogs. Catalogs without a ``#ID`` line keep
+    the caller-supplied ``halo_pid_position``.
 
     Parameters
     ----------
@@ -230,11 +231,10 @@ def resolve_rockstar_pid_filter(
         )
         return True, halo_pid_position
 
-    logging.warning(
-        "Rockstar catalog %s has no PID column; loading all halos as centrals.",
-        Path(path).name,
+    raise ValueError(
+        f"Rockstar catalog {Path(path).name} has no PID column; "
+        "cannot filter hosts with filter_by_pid=True."
     )
-    return False, halo_pid_position
 
 
 class RockstarCatalogReader(HaloCatalogReader):

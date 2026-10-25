@@ -131,6 +131,7 @@ def rockstar_halo_catalog_to_dataframe(
     path: Path,
     n_lines: Optional[int] = None,
     catalog_column_kwargs: Optional[dict[str, int]] = None,
+    filter_by_pid: bool = True,
 ) -> pd.DataFrame:
     """
     Load a Rockstar ``.list`` file via ``RockstarCatalogReader``.
@@ -144,6 +145,8 @@ def rockstar_halo_catalog_to_dataframe(
     catalog_column_kwargs : Optional[dict[str, int]], optional
         Column index kwargs for ``read_catalog``; FastPM layouts use
         ``rockstar_catalog_column_kwargs(ROCKSTAR_LIST_CATALOG_LAYOUT)``.
+    filter_by_pid : bool, optional
+        Keep only host halos when the catalog exposes a ``PID`` column.
 
     Returns
     -------
@@ -155,14 +158,19 @@ def rockstar_halo_catalog_to_dataframe(
     catalog = RockstarCatalogReader.read_catalog(
         str(path),
         n_lines=n_lines,
-        filter_by_pid=True,
+        filter_by_pid=filter_by_pid,
         **catalog_column_kwargs,
     )
     frame = _halo_catalog_data_to_frame(catalog)
     if ROCKSTAR_LIST_COLUMNS.get("t_over_u") is not None:
         t_over_u_index = ROCKSTAR_LIST_COLUMNS["t_over_u"]
         pid_index = catalog_column_kwargs["halo_pid_position"]
-        rows = _read_host_catalog_rows(path, pid_index=pid_index, max_hosts=n_lines)
+        rows = _read_host_catalog_rows(
+            path,
+            pid_index=pid_index,
+            max_hosts=n_lines,
+            filter_by_pid=filter_by_pid,
+        )
         frame["t_over_u"] = np.array(
             [row[t_over_u_index] for row in rows],
             dtype=np.float64,
@@ -198,5 +206,6 @@ def load_fastpm_target_catalog(
         list_path,
         n_lines=max_halos,
         catalog_column_kwargs=catalog_column_kwargs,
+        filter_by_pid=False,
     )
     return filter_positive_mass(frame)
