@@ -48,7 +48,7 @@ def test_filter_positive_mass(masses, expected_count):
 @pytest.mark.parametrize(
     "min_mass,max_mass,expected_masses",
     [
-        (2.0e10, None, [2.0e10, 3.0e10]),
+        (2.0e10, None, [2.0e10, 2.5e10, 3.0e10]),
         (None, 2.5e10, [1.0e10, 2.0e10, 2.5e10]),
         (2.0e10, 2.5e10, [2.0e10, 2.5e10]),
     ],

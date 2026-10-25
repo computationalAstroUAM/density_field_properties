@@ -15,20 +15,31 @@ from density_field_properties.preprocessing.mass_calibration_config import (
 
 def test_abundance_match_mass_volume_changes_result():
     """
-    Number-density normalization should differ from the rank-only case.
+    Different reference and target volumes should change the calibrated masses.
     """
     target = np.array([1.0e11, 5.0e11, 1.0e12])
     reference = np.linspace(1.0e11, 1.0e12, 20)
-    without_volume = abundance_match_mass(target, reference)
-    volume = 200.0**3
-    with_volume = abundance_match_mass(target, reference, volume, volume)
-    assert without_volume.shape == with_volume.shape
-    assert not np.allclose(without_volume, with_volume)
+    reference_volume = 200.0**3
+    target_volume = 100.0**3
+    same_volume = abundance_match_mass(
+        target,
+        reference,
+        reference_volume,
+        reference_volume,
+    )
+    different_volumes = abundance_match_mass(
+        target,
+        reference,
+        reference_volume,
+        target_volume,
+    )
+    assert different_volumes.shape == target.shape
+    assert not np.allclose(same_volume, different_volumes)
 
 
 def test_apply_mass_calibration_abundance_uses_pipeline_box_size():
     """
-    Pipeline box size should enable volume normalization when config omits it.
+    Shared pipeline box size applies the same volume to HR and LR abundance matching.
     """
     hr = pd.DataFrame({"M200b": np.logspace(11.0, 12.5, 50)})
     lr = pd.DataFrame({"M200b": np.logspace(10.8, 12.2, 40)})
@@ -44,7 +55,8 @@ def test_apply_mass_calibration_abundance_uses_pipeline_box_size():
         default_mass_calibration_config(enabled=True),
         box_size_mpc_h=200.0,
     )
-    assert not np.allclose(no_box_lr["M200b_cal"], with_box_lr["M200b_cal"])
+    assert np.allclose(no_box_lr["M200b_cal"], with_box_lr["M200b_cal"])
+    assert np.all(np.isfinite(with_box_lr["M200b_cal"]))
 
 
 def test_abundance_match_mass_preserves_order():
