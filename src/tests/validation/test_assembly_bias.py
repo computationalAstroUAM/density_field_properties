@@ -1,0 +1,186 @@
+"""Unit tests for assembly-bias validation helpers."""
+
+import importlib
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+import numpy as np
+import pytest
+
+try:
+    importlib.import_module("bigfile")
+except Exception:
+    pytest.skip("bigfile not available", allow_module_level=True)
+
+from density_field_properties.environment_properties.cic.cic_deposit import (
+    DensityFieldInfo,
+    save_density_field_cic,
+)
+from density_field_properties.validation.assembly_bias import (
+    assembly_bias_curves_for_catalog,
+    halo_overdensity_field_cic,
+    joint_assembly_masks,
+    joint_assembly_masks_from_reference,
+    load_matter_overdensity,
+    paranjape_halo_by_halo_bias,
+    solve_joint_percentile,
+)
+
+BOX_SIZE = 3.0
+MASS_PARTICLE = 1.2e9
+
+
+@pytest.mark.parametrize("n_properties", [2, 4])
+def test_joint_masks_target_fraction(n_properties):
+    """Joint tails should bracket the requested population fraction."""
+    rng = np.random.default_rng(0)
+    properties = rng.normal(size=(5000, n_properties))
+    lower_mask, upper_mask, percentile = joint_assembly_masks(properties, target_fraction=0.25)
+    assert 0.0 < percentile < 100.0
+    assert 0.15 < lower_mask.mean() < 0.35
+    assert 0.15 < upper_mask.mean() < 0.35
+
+
+def test_solve_joint_percentile_monotonic():
+    """Larger target fractions require a higher per-property percentile."""
+    properties = np.column_stack([np.linspace(0.0, 1.0, 200), np.linspace(0.0, 1.0, 200)])
+    low_p = solve_joint_percentile(properties, target_fraction=0.10, tail="lower")
+    high_p = solve_joint_percentile(properties, target_fraction=0.30, tail="lower")
+    assert high_p > low_p
+
+
+def test_paranjape_bias_constant_field_near_zero():
+    """A uniform overdensity field should yield near-zero halo bias."""
+    n_grid = 32
+    boxsize = 100.0
+    delta_field = np.zeros((n_grid, n_grid, n_grid), dtype=np.float64)
+    positions = np.array([[10.0, 20.0, 30.0], [40.0, 50.0, 60.0]])
+    bias = paranjape_halo_by_halo_bias(positions, delta_field, boxsize, k_max_h_mpc=0.2)
+    assert np.allclose(bias, 0.0, atol=1e-10)
+
+
+def test_load_matter_overdensity_saved_cic():
+    expected_mass_field = np.zeros((3, 3, 3))
+    expected_mass_field[1, 1, 1] = 6 * MASS_PARTICLE
+    with TemporaryDirectory() as tmpdirname:
+        dm_particles_file = f"{tmpdirname}/dm_particles.txt"
+        density_info = DensityFieldInfo(
+            n_grid=3, box_size=BOX_SIZE, n_particles=6, mass_particle=MASS_PARTICLE
+        )
+        output_file = save_density_field_cic(
+            expected_mass_field, tmpdirname, dm_particles_file, density_info
+        )
+        output_info_file = f"{tmpdirname}/dm_particles_density_info.txt"
+        delta, mode = load_matter_overdensity(
+            tmpdirname,
+            BOX_SIZE,
+            3,
+            MASS_PARTICLE,
+            dm_particles_path=None,
+            saved_density_path=Path(output_file).name,
+            saved_density_info_path=Path(output_info_file).name,
+        )
+        assert mode == "saved CIC"
+        assert delta is not None
+        assert delta.shape == (3, 3, 3)
+
+
+def test_halo_overdensity_field_cic_uniform_weights():
+    """CIC halo field should have mean overdensity near zero on a small periodic grid."""
+    positions = np.array([[0.5, 0.5, 0.5], [1.5, 1.5, 1.5]], dtype=np.float64)
+    weights = np.array([1.0, 1.0], dtype=np.float64)
+    delta = halo_overdensity_field_cic(positions, weights, boxsize_mpc_h=3.0, n_grid=3)
+    assert delta.shape == (3, 3, 3)
+    assert np.isclose(delta.mean(), 0.0, atol=1e-12)
+
+
+def test_assembly_bias_curves_returns_finite_bins():
+    """Binned curves should return aligned mass and bias arrays."""
+    rng = np.random.default_rng(1)
+    mass = 10 ** rng.uniform(11.0, 13.0, size=800)
+    bias = 1.0 + 0.2 * rng.normal(size=800)
+    properties = rng.normal(size=(800, 4))
+    bin_edges = np.linspace(11.0, 13.0, 6)
+    curves = assembly_bias_curves_for_catalog(mass, bias, properties, bin_edges)
+    lower_mass, lower_bias, lower_sem, upper_mass, upper_bias, upper_sem = curves
+    assert len(lower_mass) == len(lower_bias) == len(lower_sem)
+    assert len(upper_mass) == len(upper_bias) == len(upper_sem)
+    assert np.all(lower_mass > 0.0)
+    assert np.all(upper_mass > 0.0)
+    assert np.all(lower_sem >= 0.0)
+    assert np.all(upper_sem >= 0.0)
+
+
+def test_joint_assembly_masks_from_reference_uses_reference_percentiles():
+    """
+    Reference thresholds should classify a target sample without recomputing percentiles on it.
+    """
+    reference = np.column_stack([np.linspace(0.0, 1.0, 400), np.linspace(0.0, 1.0, 400)])
+    target = reference + 0.05
+    lower_mask, upper_mask, percentile = joint_assembly_masks_from_reference(
+        target,
+        reference,
+        target_fraction=0.25,
+    )
+    assert 0.0 < percentile < 100.0
+    assert lower_mask.shape == (400,)
+    assert upper_mask.shape == (400,)
+    assert not np.any(lower_mask & upper_mask)
+
+
+def test_assembly_bias_curves_with_reference_thresholds():
+    """
+    LR curves can inherit HR tail thresholds while using predicted properties.
+    """
+    rng = np.random.default_rng(4)
+    bin_edges = np.linspace(11.0, 12.0, 3)
+    hr_mass = 10 ** rng.uniform(11.0, 12.0, size=500)
+    lr_mass = 10 ** rng.uniform(11.0, 12.0, size=500)
+    hr_props = np.column_stack(
+        [
+            rng.normal(size=500),
+            rng.normal(size=500),
+        ]
+    )
+    lr_props = hr_props + 0.1 * rng.normal(size=(500, 2))
+    lr_bias = 1.0 + 0.2 * lr_props[:, 0]
+
+    curves = assembly_bias_curves_for_catalog(
+        lr_mass,
+        lr_bias,
+        lr_props,
+        bin_edges,
+        threshold_mass=hr_mass,
+        threshold_property_matrix=hr_props,
+    )
+
+    assert len(curves[0]) >= 1
+    assert len(curves[3]) >= 1
+
+
+def test_assembly_bias_curves_select_tails_within_each_mass_bin():
+    """Each populated mass bin should contribute upper and lower tail points."""
+    rng = np.random.default_rng(2)
+    n_per_bin = 400
+    bin_edges = np.linspace(11.0, 12.0, 3)
+    mass_low = 10 ** rng.uniform(11.0, 11.5, size=n_per_bin)
+    mass_high = 10 ** rng.uniform(11.5, 12.0, size=n_per_bin)
+    mass = np.concatenate([mass_low, mass_high])
+    log_mass = np.log10(mass)
+    concentration = 5.0 + 10.0 * (log_mass - 11.0) / (12.0 - 11.0)
+    spin = rng.normal(size=len(mass))
+    shape_a = rng.uniform(0.6, 0.9, size=len(mass))
+    shape_b = rng.uniform(0.7, 1.0, size=len(mass))
+    properties = np.column_stack([concentration, spin, shape_a, shape_b])
+    bias = 1.0 + 0.05 * concentration + 0.1 * rng.normal(size=len(mass))
+
+    lower_mass, _, _, upper_mass, _, _ = assembly_bias_curves_for_catalog(
+        mass,
+        bias,
+        properties,
+        bin_edges,
+    )
+
+    assert len(lower_mass) == 2
+    assert len(upper_mass) == 2
+    assert np.allclose(lower_mass, upper_mass)

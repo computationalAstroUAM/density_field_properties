@@ -1,0 +1,32 @@
+{
+  "run_name": "tidal_anisotropy_mn5_assembly_bias_only",
+  "paths": {
+    "sim_hlist": "output/tidal_mn5/unit/hlist_1.00000.list",
+    "fastpm_list": "output/rockstar_find_parents/fastpm_mn5_tfm/out_8_with_pid.list",
+    "repo_root": ".",
+    "output_dir": "output/tidal_mn5/haloscope"
+  },
+  "sample": {
+    "box_size_mpc_h": 1000
+  },
+  "haloscope": {
+    "input_features": ["overdensity", "tidal_anisotropy"],
+    "enriched_parquet_name": "fastpm_out_8_haloscope_tidal_enriched.parquet"
+  },
+  "pipeline": {
+    "tidal_anisotropy": {"enabled": false},
+    "preprocess": {
+      "enabled": false,
+      "hr_parquet_name": "halos_sim_preprocessed.parquet",
+      "lr_parquet_name": "halos_fastpm_preprocessed.parquet"
+    },
+    "haloscope": {"enabled": false}
+  },
+  "validation": {
+    "assembly_bias": {
+      "enabled": true,
+      "only": true,
+      "n_grid": 256
+    }
+  }
+}

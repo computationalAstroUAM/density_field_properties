@@ -25,10 +25,7 @@ mkdir -p "${OUTPUT_PATH}"
 
 echo "[INFO] [$(date '+%Y-%m-%d %H:%M:%S')] Starting SIM (UNIT) to FastPM Haloscope (full catalogs)"
 
-srun python scripts/run_sim_to_fastpm_haloscope.py \
-    --max-sim-halos 0 \
-    --max-fastpm-halos 0 \
-    --min-bin-size "${MIN_BIN_SIZE}" \
-    --output-dir "${OUTPUT_PATH}"
+srun python pipelines/run_haloscope_enrichment.py \
+    --config config/haloscope_run_env_production.json
 
 echo "[INFO] [$(date '+%Y-%m-%d %H:%M:%S')] Finished Haloscope enrichment"

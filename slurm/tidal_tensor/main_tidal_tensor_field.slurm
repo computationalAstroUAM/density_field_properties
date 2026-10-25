@@ -9,6 +9,8 @@
 #SBATCH --exclude=epi
 #SBATCH --time=30-00:00:00
 
+# Alias of main_tidal_tensor_field_fastpm.slurm (FastPM rerun after issue #12).
+
 set -euo pipefail
 cd /home/arnes/santiago_arranz/density_field_properties
 
@@ -22,16 +24,22 @@ DENSITY_INFO="output/fast_pm_bigfile/snap_1.0000_density_info.txt"
 HALO_FILE="/data21/users/mruiz/fastpm_MN5/fastpm_tfm/rockstar_out_pm/out_8.list"
 OUTPUT_PATH="output/fast_pm_bigfile"
 HALO_CATALOG_NAME="rockstar"
+BATCH_SIZE=100000
 
 mkdir -p "${OUTPUT_PATH}"
 
-echo "[INFO] [$(date '+%Y-%m-%d %H:%M:%S')] Starting tidal tensor and environment descriptors"
+if [[ -d "${OUTPUT_PATH}/tidal_anisotropy" ]]; then
+    echo "[INFO] [$(date '+%Y-%m-%d %H:%M:%S')] Removing stale tidal_anisotropy output (issue #12)"
+    rm -rf "${OUTPUT_PATH}/tidal_anisotropy"
+fi
+
+echo "[INFO] [$(date '+%Y-%m-%d %H:%M:%S')] FastPM: tidal descriptors rerun (reuse tidal_tensor HDF5)"
 
 srun python scripts/main_tidal_tensor_field.py \
     --density_file "${DENSITY_FILE}" \
     --density_info "${DENSITY_INFO}" \
     --halo_file "${HALO_FILE}" \
     --halo_catalog_name "${HALO_CATALOG_NAME}" \
-    --batch_size 100000 \
+    --batch_size "${BATCH_SIZE}" \
     --path "${OUTPUT_PATH}" \
     --read_from_path

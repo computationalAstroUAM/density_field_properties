@@ -1,0 +1,224 @@
+"""Default cluster paths and Haloscope run constants for pipeline orchestration."""
+
+from pathlib import Path
+from typing import Optional
+
+SIM_ROCKSTAR_ROOT = Path("/data5/UNITSIM/fixedAmp_InvPhase_001/ROCKSTAR/outputs")
+SIM_HLIST_RELATIVE = Path("hlists/hlist_1.00000.list.bz2")
+SIM_BOXSIZE_MPC_H = 1000.0
+
+FASTPM_ROCKSTAR_DIR = Path("/data21/users/mruiz/fastpm_MN5/fastpm_tfm/rockstar_out_nbody")
+FASTPM_LIST_NAME = "out_8.list"
+FASTPM_BOXSIZE_MPC_H = 1000.0
+
+UNIT_SIM_ROOT = Path("/data21/UNITSIM/fixedAmp_InvPhase_001")
+UNIT_ROCKSTAR_DIR = UNIT_SIM_ROOT / "ROCKSTAR"
+UNIT_ROCKSTAR_LIST_NAME = "out_128p.list.bz2"
+
+ENV_RADIUS_MPC_H = 5.0
+CALIBRATE_MASS = True  # default mass_calibration.enabled when JSON omits mass_calibration
+
+DM_MASS_PARTICLE_MSUN_H = 1.2e9
+MIN_M200B_TIMES_MP = 20.0
+MIN_M200B_MSUN_H = MIN_M200B_TIMES_MP * DM_MASS_PARTICLE_MSUN_H
+FASTPM_DM_PARTICLES_PATH = Path(
+    "/data21/users/mruiz/fastpm_MN5/fastpm_tfm/output_01/snap_1.0000/1"
+)
+FASTPM_SAVED_CIC_DENSITY = Path("output/fast_pm_bigfile/snap_1.0000_density")
+FASTPM_SAVED_CIC_DENSITY_INFO = Path("output/fast_pm_bigfile/snap_1.0000_density_info.txt")
+SIM_SAVED_CIC_DENSITY = Path("output/unit_files/dm_particles_0.5_128_density")
+SIM_SAVED_CIC_DENSITY_INFO = Path("output/unit_files/dm_particles_0.5_128_density_info.txt")
+SIM_DM_PARTICLES_PATH = Path("output/unit_files/dm_particles_0.5_128")
+ASSEMBLY_BIAS_DM_BATCH_SIZE: Optional[int] = None
+
+INPUT_FEATURES = ("env",)
+TIDAL_INPUT_FEATURES = ("t_over_u", "tidal_anisotropy")
+OUTPUT_FEATURES = ("cv", "Spin", "ca", "ba")
+
+FASTPM_TIDAL_DESCRIPTORS_DIR = Path("output/fast_pm_bigfile/tidal_anisotropy")
+UNIT_TIDAL_DESCRIPTORS_DIR = Path("output/unit_files/tidal_anisotropy")
+TIDAL_DENSITY_N_GRID = 512
+
+OUTPUT_DIR_TIDAL = Path("output/sim_to_fastpm_haloscope_tidal")
+OUTPUT_DIR_TIDAL_SMOKE = Path("output/sim_to_fastpm_haloscope_tidal_smoke")
+ENRICHED_TIDAL_PARQUET_NAME = "fastpm_out_8_haloscope_tidal_enriched.parquet"
+
+MAX_DESCRIPTOR_BATCH_FILES = None
+SMOKE_MAX_DESCRIPTOR_BATCH_FILES = 1
+
+MAX_SIM_HALOS = None
+MAX_FASTPM_HALOS = None
+
+QUICK_RUN = False
+
+SMOKE_MAX_SIM_HALOS = 8000
+SMOKE_MAX_FASTPM_HALOS = 8000
+SMOKE_MIN_BIN_SIZE = 5
+PRODUCTION_MIN_BIN_SIZE = 10
+
+OUTPUT_DIR = Path("output/sim_to_fastpm_haloscope")
+ENRICHED_PARQUET_NAME = "fastpm_out_8_haloscope_enriched.parquet"
+
+
+def max_sim_halos_for_run(quick_run: bool = QUICK_RUN) -> Optional[int]:
+    """
+    Row cap for the UNIT hlist according to ``quick_run``.
+
+    Parameters
+    ----------
+    quick_run : bool, optional
+        If True, use ``SMOKE_MAX_SIM_HALOS``; else ``MAX_SIM_HALOS``.
+
+    Returns
+    -------
+    Optional[int]
+        Maximum data rows to read, or ``None`` for the full catalog.
+    """
+    return SMOKE_MAX_SIM_HALOS if quick_run else MAX_SIM_HALOS
+
+
+def max_fastpm_halos_for_run(quick_run: bool = QUICK_RUN) -> Optional[int]:
+    """
+    Halo cap for the FastPM ``.list`` according to ``quick_run``.
+
+    Parameters
+    ----------
+    quick_run : bool, optional
+        If True, use ``SMOKE_MAX_FASTPM_HALOS``; else ``MAX_FASTPM_HALOS``.
+
+    Returns
+    -------
+    Optional[int]
+        Maximum halos to read, or ``None`` for the full catalog.
+    """
+    return SMOKE_MAX_FASTPM_HALOS if quick_run else MAX_FASTPM_HALOS
+
+
+def min_bin_size_for_run(quick_run: bool = QUICK_RUN) -> int:
+    """
+    Minimum halos per mass bin for Haloscope fits.
+
+    Parameters
+    ----------
+    quick_run : bool, optional
+        If True, use ``SMOKE_MIN_BIN_SIZE``; else ``PRODUCTION_MIN_BIN_SIZE``.
+
+    Returns
+    -------
+    int
+        Minimum bin population.
+    """
+    return SMOKE_MIN_BIN_SIZE if quick_run else PRODUCTION_MIN_BIN_SIZE
+
+
+def max_descriptor_batch_files_for_run(quick_run: bool = QUICK_RUN) -> Optional[int]:
+    """
+    Cap on tidal descriptor batch files per simulation.
+
+    Parameters
+    ----------
+    quick_run : bool, optional
+        If True, use ``SMOKE_MAX_DESCRIPTOR_BATCH_FILES``; else ``MAX_DESCRIPTOR_BATCH_FILES``.
+
+    Returns
+    -------
+    Optional[int]
+        Maximum batch files to load, or ``None`` for all batches.
+    """
+    return SMOKE_MAX_DESCRIPTOR_BATCH_FILES if quick_run else MAX_DESCRIPTOR_BATCH_FILES
+
+
+def default_unit_tidal_descriptors_dir() -> Path:
+    """
+    Relative path to precomputed UNIT tidal descriptor batches.
+
+    Returns
+    -------
+    Path
+        Directory under ``output/unit_files/tidal_anisotropy/``.
+    """
+    return UNIT_TIDAL_DESCRIPTORS_DIR
+
+
+def default_fastpm_tidal_descriptors_dir() -> Path:
+    """
+    Relative path to precomputed FastPM tidal descriptor batches.
+
+    Returns
+    -------
+    Path
+        Directory under ``output/fast_pm_bigfile/tidal_anisotropy/``.
+    """
+    return FASTPM_TIDAL_DESCRIPTORS_DIR
+
+
+def default_sim_hlist_path() -> Path:
+    """
+    Default absolute path to the UNIT consistent-trees hlist at scale factor a=1 (z=0).
+
+    Returns
+    -------
+    Path
+        Path to ``hlist_1.00000.list.bz2``.
+    """
+    return SIM_ROCKSTAR_ROOT / SIM_HLIST_RELATIVE
+
+
+def default_sim_saved_cic_density_paths() -> tuple[Path, Path]:
+    """
+    Relative paths to the precomputed UNIT SIM CIC density under ``output/unit_files/``.
+
+    Returns
+    -------
+    tuple[Path, Path]
+        ``(density_binary, density_info_txt)`` from ``main_density_field_cic``.
+    """
+    return SIM_SAVED_CIC_DENSITY, SIM_SAVED_CIC_DENSITY_INFO
+
+
+def default_fastpm_saved_cic_density_paths() -> tuple[Path, Path]:
+    """
+    Relative paths to the precomputed FastPM CIC density under the repo ``output/`` tree.
+
+    Returns
+    -------
+    tuple[Path, Path]
+        ``(density_binary, density_info_txt)`` as produced by ``main_density_field_cic``.
+    """
+    return FASTPM_SAVED_CIC_DENSITY, FASTPM_SAVED_CIC_DENSITY_INFO
+
+
+def default_fastpm_dm_particles_path() -> Path:
+    """
+    Default FastPM BigFile block path for DM at ``snap_1.0000``.
+
+    Returns
+    -------
+    Path
+        Block directory under the FastPM ``output_*`` snapshot.
+    """
+    return FASTPM_DM_PARTICLES_PATH
+
+
+def default_sim_dm_particles_path() -> Optional[Path]:
+    """
+    UNIT SIM DM particle file for live CIC (relative to repo ``output/unit_files/``).
+
+    Returns
+    -------
+    Optional[Path]
+        Path to DM positions when configured; ``None`` skips the DM fallback.
+    """
+    return SIM_DM_PARTICLES_PATH
+
+
+def default_fastpm_list_path() -> Path:
+    """
+    Default absolute path to the FastPM Rockstar catalog file.
+
+    Returns
+    -------
+    Path
+        Path to ``FASTPM_LIST_NAME`` under ``FASTPM_ROCKSTAR_DIR``.
+    """
+    return FASTPM_ROCKSTAR_DIR / FASTPM_LIST_NAME

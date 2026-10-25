@@ -1,4 +1,4 @@
-"""Import checks for Haloscope and SIM-to-FastPM modules (no cluster data)."""
+"""Import checks for Haloscope and pipeline modules (no cluster data)."""
 
 import importlib
 
@@ -10,10 +10,17 @@ import pytest
     [
         (
             "density_field_properties.haloscope",
-            ["ConditionalMultiVariateGaussian"],
+            [
+                "ConditionalMultiVariateGaussian",
+                "default_mass_bin_edges",
+                "enrich_fastpm_catalog",
+                "fit_models",
+                "holdout_validate_sim_bins",
+                "predict_models",
+            ],
         ),
         (
-            "density_field_properties.haloscope.sim_to_fastpm.config",
+            "density_field_properties.pipelines.run_defaults",
             [
                 "default_sim_hlist_path",
                 "default_fastpm_list_path",
@@ -21,20 +28,16 @@ import pytest
             ],
         ),
         (
-            "density_field_properties.haloscope.sim_to_fastpm.pipeline",
-            ["run_sim_to_fastpm_haloscope_pipeline"],
-        ),
-        (
-            "density_field_properties.haloscope.sim_to_fastpm.load_catalogs",
+            "density_field_properties.preprocessing.catalog_loaders",
             ["load_unit_sim_training_catalog", "load_fastpm_target_catalog"],
         ),
         (
-            "density_field_properties.haloscope.sim_to_fastpm.training",
-            ["default_mass_bin_edges", "enrich_fastpm_catalog", "holdout_validate_sim_bins"],
+            "density_field_properties.validation.marginals",
+            ["corner_plot_sim_validation"],
         ),
         (
-            "density_field_properties.haloscope.sim_to_fastpm.plotting",
-            ["corner_plot_sim_validation", "median_property_vs_mass"],
+            "density_field_properties.utils.stats",
+            ["median_property_vs_mass"],
         ),
     ],
 )
@@ -51,14 +54,15 @@ def test_run_sim_to_fastpm_haloscope_script_main_imports():
     """
     Mirror ``scripts/run_sim_to_fastpm_haloscope.py`` deferred imports.
     """
-    from density_field_properties.haloscope.sim_to_fastpm.config import (
+    pytest.importorskip("bigfile")
+    from density_field_properties.pipelines.haloscope_enrichment import (
+        run_haloscope_enrichment_pipeline,
+    )
+    from density_field_properties.pipelines.run_defaults import (
         default_fastpm_list_path,
         default_sim_hlist_path,
-    )
-    from density_field_properties.haloscope.sim_to_fastpm.pipeline import (
-        run_sim_to_fastpm_haloscope_pipeline,
     )
 
     assert callable(default_sim_hlist_path)
     assert callable(default_fastpm_list_path)
-    assert callable(run_sim_to_fastpm_haloscope_pipeline)
+    assert callable(run_haloscope_enrichment_pipeline)

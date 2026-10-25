@@ -4,7 +4,7 @@
 
 ## Upstream code
 
-`haloscope.py` is a **verbatim copy** of the upstream module
+`model.py` is a **verbatim copy** of the upstream module
 [haloscope.py](https://github.com/computationalAstroUAM/haloscope/blob/main/haloscope.py).
 It is not reformatted with black/flake8/isort in this repo (see `src/.pre-commit-config.yaml`).
 
@@ -12,11 +12,13 @@ Import in this project:
 
 ```python
 from density_field_properties.haloscope import ConditionalMultiVariateGaussian
+from density_field_properties.haloscope import fit_models, predict_models
 ```
 
-## Repository-specific code
+Canonical modules: `model.py`, `bins.py`, `training.py`, `predict.py`.
 
-`sim_to_fastpm/` contains the UNIT → FastPM enrichment pipeline used here.
+Pipeline orchestration lives in `density_field_properties.pipelines`; validation plots in
+`density_field_properties.validation`.
 
 ## Alternative: pip dependency
 
@@ -26,4 +28,4 @@ To avoid vendoring the file, add under `pip:` in `environment.yml`:
 - haloscope @ git+https://github.com/computationalAstroUAM/haloscope.git@main
 ```
 
-Remove `haloscope.py` and use `from haloscope import ConditionalMultiVariateGaussian` where needed.
+Remove `model.py` and use `from haloscope import ConditionalMultiVariateGaussian` where needed.
