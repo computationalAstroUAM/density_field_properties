@@ -68,15 +68,13 @@ def abundance_match_mass(
     """
     mass_reference_sorted = np.sort(mass_reference)[::-1]
     mass_target_argsort = np.argsort(mass_target)[::-1]
-    
+
     n_reference_density = np.arange(len(mass_reference_sorted), dtype=np.float64) + 1.0
     n_target_density = np.arange(len(mass_target), dtype=np.float64) + 1.0
 
     condition_volume = int(volume_reference is None) + int(volume_target is None)
     if condition_volume == 1:
-        raise ValueError(
-            "volume_reference and volume_target must both be set or both omitted."
-        )
+        raise ValueError("volume_reference and volume_target must both be set or both omitted.")
     elif condition_volume == 0:
         n_reference_density /= float(volume_reference)
         n_target_density /= float(volume_target)
@@ -132,7 +130,9 @@ def _apply_abundance_matching(
     hr_masses = hr_catalog[config.matching.hr_mass_column].to_numpy()
     if len(lr_masses) == 0 or len(hr_masses) == 0:
         raise ValueError("Empty HR or LR mass sample for abundance matching.")
-    lr_catalog[config.calibrated_column] = abundance_match_mass(lr_masses, hr_masses, volume, volume)
+    lr_catalog[config.calibrated_column] = abundance_match_mass(
+        lr_masses, hr_masses, volume, volume
+    )
     lr_catalog["mass_calib_method"] = MASS_CALIBRATION_METHOD_ABUNDANCE
     return lr_catalog
 

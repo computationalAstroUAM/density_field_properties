@@ -116,9 +116,8 @@ def resolve_attachers(input_features: Sequence[str]) -> list[InputFeatureAttache
             raise ValueError(f"Duplicate input feature: {feature_name}")
         seen.add(feature_name)
         if feature_name not in known:
-            raise ValueError(
-                f"Unknown input feature {feature_name!r}; known: {', '.join(_known_input_feature_names())}"
-            )
+            known_names = ", ".join(_known_input_feature_names())
+            raise ValueError(f"Unknown input feature {feature_name!r}; known: {known_names}")
         if feature_name in HALO_ENVIRONMENT_DESCRIPTOR_COLUMNS:
             if not descriptor_attacher_added:
                 attachers.append(HaloEnvironmentDescriptorsAttacher(descriptor_columns))

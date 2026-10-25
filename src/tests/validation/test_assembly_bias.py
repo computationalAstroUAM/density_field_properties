@@ -143,7 +143,6 @@ def test_assembly_bias_curves_with_reference_thresholds():
         ]
     )
     lr_props = hr_props + 0.1 * rng.normal(size=(500, 2))
-    hr_bias = 1.0 + 0.2 * hr_props[:, 0]
     lr_bias = 1.0 + 0.2 * lr_props[:, 0]
 
     curves = assembly_bias_curves_for_catalog(

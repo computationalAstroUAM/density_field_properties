@@ -134,9 +134,7 @@ def build_preprocessing_context(
         ),
         mass_calibration=mass_calibration,
         mass_filter=(
-            mass_filter
-            if mass_filter is not None
-            else default_halo_mass_filter_config()
+            mass_filter if mass_filter is not None else default_halo_mass_filter_config()
         ),
     )
 

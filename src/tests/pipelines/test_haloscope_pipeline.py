@@ -121,7 +121,9 @@ def test_run_haloscope_pipeline_assembly_bias_only(tmp_path):
     hr_path = out_dir / "hr.parquet"
     enriched_path = out_dir / "enriched.parquet"
     hr = pd.DataFrame({"M200b": [1.0e12]})
-    lr = pd.DataFrame({"M200b_cal": [9.0e11], "cv": [1.0], "Spin": [0.1], "ca": [0.9], "ba": [0.8]})
+    lr = pd.DataFrame(
+        {"M200b_cal": [9.0e11], "cv": [1.0], "Spin": [0.1], "ca": [0.9], "ba": [0.8]}
+    )
     hr.to_parquet(hr_path, index=False)
     lr.to_parquet(enriched_path, index=False)
 

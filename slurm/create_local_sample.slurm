@@ -27,4 +27,3 @@ conda activate density_field_properties
 #   unitsim_dm unitsim_rockstar fastpm_nbody fastpm_pm fastpm_fof fastpm_snap
 
 srun python scripts/generate_local_spatial_sample.py "$@"
-

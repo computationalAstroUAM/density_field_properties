@@ -5,6 +5,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional, Sequence
 
+from density_field_properties.haloscope.mass_bin_config import (
+    HaloscopeMassBinConfig,
+    default_haloscope_mass_bin_config,
+    parse_haloscope_mass_bin_config,
+)
 from density_field_properties.pipelines.catalog_columns import (
     HLIST_CATALOG_LAYOUT,
     ROCKSTAR_LIST_CATALOG_LAYOUT,
@@ -35,11 +40,6 @@ from density_field_properties.preprocessing.mass_calibration_config import (
     MassCalibrationConfig,
     default_mass_calibration_config,
     parse_mass_calibration_config,
-)
-from density_field_properties.haloscope.mass_bin_config import (
-    HaloscopeMassBinConfig,
-    default_haloscope_mass_bin_config,
-    parse_haloscope_mass_bin_config,
 )
 from density_field_properties.preprocessing.mass_filter_config import (
     HaloMassFilterConfig,

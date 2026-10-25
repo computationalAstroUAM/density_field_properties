@@ -209,9 +209,7 @@ def _attach_halo_environment_descriptors(
         run_context.tidal_n_grid,
     )
     merged = grid_keys.merge(
-        descriptors[
-            ["cell_x", "cell_y", "cell_z", *HALO_ENVIRONMENT_DESCRIPTOR_COLUMNS]
-        ],
+        descriptors[["cell_x", "cell_y", "cell_z", *HALO_ENVIRONMENT_DESCRIPTOR_COLUMNS]],
         on=["cell_x", "cell_y", "cell_z"],
         how="left",
     )

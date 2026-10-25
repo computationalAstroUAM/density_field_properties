@@ -594,9 +594,7 @@ def assembly_bias_curves_for_catalog(
         ``lower_mass``, ``lower_bias``, ``lower_sem``, ``upper_mass``, ``upper_bias``,
         ``upper_sem``.
     """
-    use_reference_thresholds = (
-        threshold_mass is not None and threshold_property_matrix is not None
-    )
+    use_reference_thresholds = threshold_mass is not None and threshold_property_matrix is not None
     if use_reference_thresholds and len(threshold_mass) != len(threshold_property_matrix):
         raise ValueError("threshold_mass and threshold_property_matrix must have equal length")
     log_mass = np.log10(mass)

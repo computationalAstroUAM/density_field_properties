@@ -26,9 +26,7 @@ class HaloMassFilterConfig:
     def __post_init__(self) -> None:
         if self.min_mass_msun_h is not None and self.max_mass_msun_h is not None:
             if self.min_mass_msun_h > self.max_mass_msun_h:
-                raise ValueError(
-                    "min_mass_msun_h must be <= max_mass_msun_h when both are set."
-                )
+                raise ValueError("min_mass_msun_h must be <= max_mass_msun_h when both are set.")
 
     @property
     def enabled(self) -> bool:

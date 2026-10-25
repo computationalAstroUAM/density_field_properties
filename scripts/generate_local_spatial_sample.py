@@ -26,8 +26,8 @@ from pathlib import Path
 
 import numpy as np
 from bigfile import BigFile
-
 from default_params import BATCH_SIZE
+
 from density_field_properties.density_field.particle_io import iter_dm_particle_batches
 from density_field_properties.haloscope.sim_to_fastpm.config import (
     ROCKSTAR_LIST_COLUMNS,
@@ -70,7 +70,8 @@ TASK_SOURCE_KEYS = {
     "fastpm_snap": ("fastpm_snap",),
 }
 
-if __name__ == "__main__":
+
+def main() -> None:  # noqa: C901
     parser = argparse.ArgumentParser(
         description="Extract a shared 200 Mpc/h spatial sample for UNITSIM and FastPM."
     )
@@ -86,10 +87,7 @@ if __name__ == "__main__":
         choices=ALL_TASKS,
         default=list(ALL_TASKS),
         metavar="TASK",
-        help=(
-            "Outputs to generate. Choices: %(choices)s. "
-            "Default: all tasks."
-        ),
+        help=("Outputs to generate. Choices: %(choices)s. " "Default: all tasks."),
     )
     args = parser.parse_args(sys.argv[1:])
     selected_tasks = set(args.tasks)
@@ -114,9 +112,7 @@ if __name__ == "__main__":
         "fastpm_snap": args.fastpm_base / "output_01" / "snap_1.0000",
     }
     required_source_keys = {
-        source_key
-        for task_name in selected_tasks
-        for source_key in TASK_SOURCE_KEYS[task_name]
+        source_key for task_name in selected_tasks for source_key in TASK_SOURCE_KEYS[task_name]
     }
     for label in sorted(required_source_keys):
         path = source_paths[label]
@@ -154,9 +150,10 @@ if __name__ == "__main__":
         unitsim_dm_out = unitsim_dir / "dm_particles_0.5_128.dat"
         unitsim_dm_count = 0
         dm_batch = []
-        with bz2.open(args.unitsim_dm, "rt") as dm_handle, open(
-            unitsim_dm_out, "w", encoding="utf-8"
-        ) as dm_out:
+        with (
+            bz2.open(args.unitsim_dm, "rt") as dm_handle,
+            open(unitsim_dm_out, "w", encoding="utf-8") as dm_out,
+        ):
             for line in dm_handle:
                 parts = line.split()
                 if len(parts) < 3:
@@ -218,9 +215,10 @@ if __name__ == "__main__":
         opener = bz2.open if source_path.suffix == ".bz2" else open
         mode = "rt" if source_path.suffix == ".bz2" else "r"
         halo_count = 0
-        with opener(source_path, mode) as catalog_in, open(
-            target_path, "w", encoding="utf-8"
-        ) as catalog_out:
+        with (
+            opener(source_path, mode) as catalog_in,
+            open(target_path, "w", encoding="utf-8") as catalog_out,
+        ):
             for line in catalog_in:
                 if line.startswith("#"):
                     catalog_out.write(line if line.endswith("\n") else f"{line}\n")
@@ -269,7 +267,9 @@ if __name__ == "__main__":
 
         for batch_start in range(0, fof_n_halos, BATCH_SIZE):
             batch_end = min(batch_start + BATCH_SIZE, fof_n_halos)
-            positions = np.asarray(fof_group.open("Position")[batch_start:batch_end], dtype=np.float64)
+            positions = np.asarray(
+                fof_group.open("Position")[batch_start:batch_end], dtype=np.float64
+            )
             in_box = (
                 (positions[:, 0] >= box_min)
                 & (positions[:, 0] <= box_max)
@@ -281,7 +281,9 @@ if __name__ == "__main__":
             if not np.any(in_box):
                 continue
             for column_name in fof_column_names:
-                column_values = np.asarray(fof_group.open(column_name)[batch_start:batch_end])[in_box]
+                column_values = np.asarray(fof_group.open(column_name)[batch_start:batch_end])[
+                    in_box
+                ]
                 fof_selected[column_name].append(column_values)
 
         if out_fof_root.exists():
@@ -354,3 +356,7 @@ if __name__ == "__main__":
     logging.info("Sample manifest written to %s", manifest_path)
     logging.info("Tasks completed: %s", sorted(selected_tasks))
     logging.info("Counts: %s", manifest["counts"])
+
+
+if __name__ == "__main__":
+    main()

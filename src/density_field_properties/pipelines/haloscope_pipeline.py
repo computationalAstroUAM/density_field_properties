@@ -16,9 +16,6 @@ from density_field_properties.pipelines.config import (
     resolve_assembly_bias_hr_parquet_path,
     resolve_assembly_bias_mass_column_fastpm,
 )
-from density_field_properties.validation.assembly_bias_panel import (
-    write_tidal_assembly_bias_panel,
-)
 from density_field_properties.pipelines.haloscope_enrichment import (
     HaloscopeEnrichmentRun,
     build_haloscope_feature_tables,
@@ -31,6 +28,9 @@ from density_field_properties.pipelines.tidal_anisotropy_run import (
 )
 from density_field_properties.preprocessing.input_features.tidal_anisotropy import (
     input_features_need_tidal_descriptors,
+)
+from density_field_properties.validation.assembly_bias_panel import (
+    write_tidal_assembly_bias_panel,
 )
 
 

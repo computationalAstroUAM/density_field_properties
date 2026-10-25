@@ -17,9 +17,6 @@ from density_field_properties.pipelines.config import (
     resolve_sim_boxsize_mpc_h,
     resolve_sim_dm_particles_path,
 )
-from density_field_properties.pipelines.tidal_anisotropy_run import (
-    try_resolve_work_dir_cic_density_paths,
-)
 from density_field_properties.pipelines.run_defaults import (
     ASSEMBLY_BIAS_DM_BATCH_SIZE,
     DM_MASS_PARTICLE_MSUN_H,
@@ -30,6 +27,9 @@ from density_field_properties.pipelines.run_defaults import (
     default_fastpm_saved_cic_density_paths,
     default_sim_dm_particles_path,
     default_sim_saved_cic_density_paths,
+)
+from density_field_properties.pipelines.tidal_anisotropy_run import (
+    try_resolve_work_dir_cic_density_paths,
 )
 from density_field_properties.validation.assembly_bias import (
     assembly_bias_curves_for_catalog,
