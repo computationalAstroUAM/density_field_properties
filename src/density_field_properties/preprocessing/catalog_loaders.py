@@ -162,6 +162,7 @@ def rockstar_halo_catalog_to_dataframe(
 def load_fastpm_target_catalog(
     list_path: Path,
     max_halos: Optional[int] = None,
+    catalog_column_kwargs: Optional[dict[str, int]] = None,
 ) -> pd.DataFrame:
     """
     Load FastPM Rockstar halos to enrich (positions and mass only).
@@ -172,16 +173,19 @@ def load_fastpm_target_catalog(
         Path to ``out_*.list`` under ``rockstar_out_pm``.
     max_halos : Optional[int], optional
         Subset size for quick runs.
-
+    catalog_column_kwargs : Optional[dict[str, int]], optional
+        Column index kwargs for ``read_catalog``; FastPM layouts use
+        ``rockstar_catalog_column_kwargs(ROCKSTAR_LIST_CATALOG_LAYOUT)``.
     Returns
     -------
     pd.DataFrame
         Positive-mass host halos with ``x``, ``y``, ``z``, ``M200b``.
     """
-    column_kwargs = rockstar_catalog_column_kwargs(ROCKSTAR_LIST_CATALOG_LAYOUT)
+    if catalog_column_kwargs is None:
+        catalog_column_kwargs = rockstar_catalog_column_kwargs(ROCKSTAR_LIST_CATALOG_LAYOUT)
     frame = rockstar_halo_catalog_to_dataframe(
         list_path,
         n_lines=max_halos,
-        catalog_column_kwargs=column_kwargs,
+        catalog_column_kwargs=catalog_column_kwargs,
     )
     return filter_positive_mass(frame)
